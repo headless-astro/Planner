@@ -71,12 +71,23 @@ describe('the export .zip', () => {
     const zip = zipSync({
       'watched.csv': strToU8(EXPORT['watched.csv']),
       'watchlist.csv': strToU8(EXPORT['watchlist.csv']),
-      'likes/films.csv': strToU8('Date,Name,Year,Letterboxd URI\n2026-01-01,Liked Only,2001,x\n'),
+      'likes/films.csv': strToU8('Date,Name,Year,Letterboxd URI\n2026-01-01,Liked Only,2001,x\n2026-01-02,Arrival,2016,y\n'),
       'deleted/diary.csv': strToU8('Date,Name,Year,Letterboxd URI,Rating,Rewatch,Tags,Watched Date\n2026-01-01,Deleted,2001,x,,,,2026-01-01\n'),
     })
     const result = await importExport([new File([new Uint8Array(zip)], 'letterboxd-export.zip')])
     expect(result.added).toBe(3)
     expect((await listMedia('watch')).map((film) => film.title).sort()).toEqual(['Aftersun', 'Arrival', 'Past Lives'])
+    // Hearted films get the heart; liked films that aren't here aren't added.
+    expect((await listMedia('watch')).find((film) => film.title === 'Arrival')?.favorite).toBe(true)
+    expect((await listMedia('watch')).find((film) => film.title === 'Past Lives')?.favorite).toBe(false)
+  })
+
+  it('hearts a film already here from the likes list, and a liked diary entry from the feed', async () => {
+    await addMedia('watch', 'Arrival', 'done', '2026-11-01', { rating: 5 })
+    expect(await mergeFilms({ watched: [], watchlist: [], liked: [{ title: 'Arrival', year: 2016 }] })).toEqual({ added: 0, updated: 1 })
+    expect((await listMedia('watch'))[0].favorite).toBe(true)
+    await mergeFilms({ watched: [{ title: 'Paterson', year: 2016, watched: '2026-10-01', rating: 5, liked: true }], watchlist: [] })
+    expect((await listMedia('watch')).find((film) => film.title === 'Paterson')?.favorite).toBe(true)
   })
 })
 

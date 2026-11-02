@@ -14,7 +14,8 @@
   import Link from './routes/Link.svelte'
   import Lists from './routes/Lists.svelte'
   import Me from './routes/Me.svelte'
-  import Media from './routes/Media.svelte'
+  import Media, { type MediaView } from './routes/Media.svelte'
+  import type { Shelf } from './lib/media'
   import Plans from './routes/Plans.svelte'
   import Recipes from './routes/Recipes.svelte'
   import Review from './routes/Review.svelte'
@@ -50,6 +51,7 @@
     'drawing',
     'books',
     'games',
+    'movies',
     'shows',
     'exercise',
     'goals',
@@ -57,7 +59,7 @@
   ] as const
   type Screen = (typeof SCREENS)[number]
   type Route =
-    | { name: Screen; want?: boolean }
+    | { name: Screen; view?: MediaView }
     | { name: 'day'; date: string }
     | { name: 'topic'; number: number }
     | { name: 'review-week'; monday: string }
@@ -71,7 +73,7 @@
     { name: 'plans', label: 'Plans', icon: 'list-checks' },
     { name: 'routines', label: 'Routines', icon: 'clock-countdown' },
     { name: 'history', label: 'History', icon: 'clock-counter-clockwise' },
-    // More opens on Books, which links to Games and Movies & shows.
+    // More opens on Books, which links to Games, Movies and Shows.
     { name: 'more', label: 'More', icon: 'plus-circle', href: '#/books' },
     { name: 'me', label: 'Me', icon: 'user' },
     { name: 'settings', label: 'Settings', icon: 'gear' },
@@ -91,6 +93,7 @@
     'review-week': 'history',
     books: 'more',
     games: 'more',
+    movies: 'more',
     shows: 'more',
     exercise: 'me',
     recipes: 'me',
@@ -102,8 +105,8 @@
     link: 'settings',
   }
 
-  /** The three media screens share one component. */
-  const MEDIA_SCREENS = { books: 'book', games: 'game', shows: 'watch' } as const
+  /** The four media screens share one component. */
+  const isShelf = (name: string): name is Shelf => name === 'books' || name === 'games' || name === 'movies' || name === 'shows'
 
   const isDate = (value: string | undefined): value is string => !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)
 
@@ -118,7 +121,7 @@
     if (name === 'projects') return { name: 'lists' }
     if (name === 'more') return { name: 'books' }
     const screen = SCREENS.find((candidate) => candidate === name)
-    if (screen === 'books' || screen === 'games' || screen === 'shows') return { name: screen, want: argument === 'want' }
+    if (screen && isShelf(screen)) return { name: screen, view: argument === 'want' || argument === 'favorites' ? argument : 'log' }
     return { name: screen ?? 'today' }
   }
 
@@ -238,11 +241,11 @@
     <Stats {today} />
   {:else if route.name === 'drawing'}
     <Drawing {today} />
-  {:else if route.name === 'books' || route.name === 'games' || route.name === 'shows'}
-    {@const kind = MEDIA_SCREENS[route.name]}
-    {@const want = !!route.want}
-    {#key `${kind}|${want}`}
-      <Media {kind} {today} {want} />
+  {:else if isShelf(route.name)}
+    {@const shelf = route.name}
+    {@const view = 'view' in route ? (route.view ?? 'log') : 'log'}
+    {#key `${shelf}|${view}`}
+      <Media {shelf} {today} {view} />
     {/key}
   {:else if route.name === 'goals'}
     <Goals {today} />

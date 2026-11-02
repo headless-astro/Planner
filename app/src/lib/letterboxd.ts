@@ -27,11 +27,15 @@ export interface FilmLog {
   watched: string | null
   /** Letterboxd's 0.5–5 stars, or null. */
   rating: number | null
+  /** Hearted on Letterboxd. */
+  liked?: boolean
 }
 
 export interface FilmList {
   watched: FilmLog[]
   watchlist: { title: string; year: number | null }[]
+  /** Films hearted on Letterboxd: they get the heart here too. */
+  liked?: { title: string; year: number | null }[]
 }
 
 export interface MergeResult {
@@ -66,6 +70,7 @@ export async function mergeFilms(list: FilmList): Promise<MergeResult> {
     films.set(key, film)
   }
 
+  const liked = new Set([...(list.liked ?? []), ...list.watched.filter((log) => log.liked)].map((film) => filmKey(film.title, film.year)))
   const result: MergeResult = { added: 0, updated: 0 }
   const ticked = new Set<string>()
   for (const film of films.values()) {
@@ -81,6 +86,7 @@ export async function mergeFilms(list: FilmList): Promise<MergeResult> {
       }
       if (existing.rating === null && film.rating !== null) changes.rating = stars(film.rating)
       if (existing.year == null && film.year !== null) changes.year = film.year
+      if (!existing.favorite && liked.has(filmKey(film.title, film.year))) changes.favorite = true
       if (Object.keys(changes).length) {
         await update(db.media, existing.id, changes)
         result.updated++
@@ -97,6 +103,7 @@ export async function mergeFilms(list: FilmList): Promise<MergeResult> {
         started: last,
         finished: last,
         rating: stars(film.rating),
+        favorite: liked.has(filmKey(film.title, film.year)),
         notes: '',
         year: film.year,
         updatedAt: now(),
@@ -128,6 +135,16 @@ export async function mergeFilms(list: FilmList): Promise<MergeResult> {
     await db.media.put(item)
     items.push(item)
     result.added++
+  }
+
+  // Hearts on films that are only in the likes list (already here, but not in this diary).
+  for (const film of list.liked ?? []) {
+    const existing = find(film.title, film.year)
+    if (existing && !existing.favorite && !films.has(filmKey(film.title, film.year))) {
+      await update(db.media, existing.id, { favorite: true })
+      existing.favorite = true
+      result.updated++
+    }
   }
 
   for (const day of ticked) {
@@ -187,7 +204,8 @@ const ratingOf = (text: string | undefined) => {
 
 /**
  * The films in Letterboxd's export files: diary.csv (viewings with dates), watched.csv
- * (everything marked watched), ratings.csv and watchlist.csv. Any of them can be missing.
+ * (everything marked watched), ratings.csv, watchlist.csv and likes/films.csv (hearted films).
+ * Any of them can be missing.
  */
 export function readExportFiles(files: Record<string, string>): FilmList {
   const rows = (name: string) => {
@@ -214,6 +232,9 @@ export function readExportFiles(files: Record<string, string>): FilmList {
     watchlist: rows('watchlist.csv')
       .map((row) => ({ title: row.Name, year: yearOf(row.Year) }))
       .filter((film) => film.title),
+    liked: rows('films.csv')
+      .map((row) => ({ title: row.Name, year: yearOf(row.Year) }))
+      .filter((film) => film.title),
   }
 }
 
@@ -225,9 +246,12 @@ export async function importExport(files: readonly File[]): Promise<MergeResult>
       const { unzipSync, strFromU8 } = await import('fflate')
       const entries = unzipSync(new Uint8Array(await file.arrayBuffer()), { filter: (entry) => entry.name.toLowerCase().endsWith('.csv') })
       for (const [path, bytes] of Object.entries(entries)) {
-        // Not the folders of lists, likes and deleted entries, which have files of the same names.
-        const folders = path.toLowerCase().split('/').slice(0, -1)
-        if (!folders.some((folder) => ['lists', 'likes', 'deleted', 'orphaned'].includes(folder))) texts[path] = strFromU8(bytes)
+        // Not the folders of lists, likes and deleted entries, which have files of the same names;
+        // only likes/films.csv, the films you hearted.
+        const lower = path.toLowerCase()
+        const folders = lower.split('/').slice(0, -1)
+        const skipped = folders.some((folder) => ['lists', 'likes', 'deleted', 'orphaned'].includes(folder))
+        if (!skipped || lower.endsWith('likes/films.csv')) texts[path] = strFromU8(bytes)
       }
     } else texts[file.name] = await file.text()
   }
@@ -239,7 +263,7 @@ export async function importExport(files: readonly File[]): Promise<MergeResult>
 // ── "Check Letterboxd" ──
 
 interface DiaryAnswer {
-  entries: { title: string; year: number | null; watched: string | null; rating: number | null }[]
+  entries: { title: string; year: number | null; watched: string | null; rating: number | null; liked?: boolean }[]
 }
 
 /** Asks the sync server to read your Letterboxd diary feed (the latest 50 entries) and brings them in. */

@@ -227,7 +227,7 @@ describe('Letterboxd', () => {
     <item><title>Past Lives, 2023 - ★★★★½</title>
       <letterboxd:watchedDate>2026-10-30</letterboxd:watchedDate><letterboxd:rewatch>No</letterboxd:rewatch>
       <letterboxd:filmTitle>Past Lives</letterboxd:filmTitle><letterboxd:filmYear>2023</letterboxd:filmYear>
-      <letterboxd:memberRating>4.5</letterboxd:memberRating></item>
+      <letterboxd:memberRating>4.5</letterboxd:memberRating><letterboxd:memberLike>Yes</letterboxd:memberLike></item>
     <item><title>Tom &amp; Jerry</title><letterboxd:filmTitle><![CDATA[Tom & Jerry]]></letterboxd:filmTitle>
       <letterboxd:watchedDate>2026-10-01</letterboxd:watchedDate><letterboxd:rewatch>Yes</letterboxd:rewatch></item>
     <item><title>A list</title><description>Not a film</description></item>
@@ -235,8 +235,8 @@ describe('Letterboxd', () => {
 
   it('reads the films from a diary feed', () => {
     expect(parseDiary(FEED)).toEqual([
-      { title: 'Past Lives', year: 2023, watched: '2026-10-30', rating: 4.5, rewatch: false },
-      { title: 'Tom & Jerry', year: null, watched: '2026-10-01', rating: null, rewatch: true },
+      { title: 'Past Lives', year: 2023, watched: '2026-10-30', rating: 4.5, rewatch: false, liked: true },
+      { title: 'Tom & Jerry', year: null, watched: '2026-10-01', rating: null, rewatch: true, liked: false },
     ])
   })
 

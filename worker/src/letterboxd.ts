@@ -10,6 +10,8 @@ export interface DiaryEntry {
   /** 0.5–5, or null when not rated. */
   rating: number | null
   rewatch: boolean
+  /** Hearted on Letterboxd. */
+  liked: boolean
 }
 
 const USERNAME = /^[A-Za-z0-9_]{1,40}$/
@@ -46,6 +48,7 @@ export function parseDiary(xml: string): DiaryEntry[] {
       watched: watched && /^\d{4}-\d{2}-\d{2}$/.test(watched) ? watched : null,
       rating: rating > 0 && rating <= 5 ? rating : null,
       rewatch: tag(item, 'letterboxd:rewatch') === 'Yes',
+      liked: tag(item, 'letterboxd:memberLike') === 'Yes',
     })
   }
   return entries

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
-import { addMedia, finishMedia, finishedIn, groupMedia, listMedia, startMedia } from './media'
+import { addMedia, finishMedia, finishedIn, groupMedia, listMedia, listShelf, setThumb, sortMedia, startMedia, thumbOf } from './media'
 import { ensureSeeded, getDayValues } from './repo'
 
 beforeEach(async () => {
@@ -39,5 +39,34 @@ describe('books, games and shows', () => {
     expect(groups.finished.map((game) => game.title)).toEqual(['Hades'])
     expect(finishedIn(await listMedia('game'), '2026')).toBe(0)
     expect(finishedIn(await listMedia('game'), '2025')).toBe(1)
+  })
+
+  it('keeps movies and shows on their own tabs', async () => {
+    await addMedia('watch', 'Arrival', 'done', '2026-11-02', { format: 'movie', rating: 5 })
+    await addMedia('watch', 'Severance', 'active', '2026-11-02', { format: 'show', rating: 5, thumb: 'up' })
+    expect((await listShelf('movies')).map((item) => item.title)).toEqual(['Arrival'])
+    expect((await listShelf('shows')).map((item) => item.title)).toEqual(['Severance'])
+    // Shows don't take stars.
+    expect((await listShelf('shows'))[0].rating).toBeNull()
+  })
+
+  it('older star ratings on books, games and shows read as thumbs; setting a thumb clears them', async () => {
+    await addMedia('book', 'Dune', 'done', '2026-11-02')
+    const [book] = await listMedia('book')
+    expect(thumbOf({ ...book, rating: 4 })).toBe('up')
+    expect(thumbOf({ ...book, rating: 3 })).toBe('meh')
+    expect(thumbOf({ ...book, rating: 2 })).toBe('down')
+    expect(thumbOf({ ...book, kind: 'watch', format: 'movie', rating: 2 })).toBeNull()
+    await setThumb(book.id, 'down')
+    expect((await listMedia('book'))[0]).toMatchObject({ thumb: 'down', rating: null })
+  })
+
+  it('orders by date or by rating', async () => {
+    await addMedia('game', 'Hades', 'done', '2026-10-01', { thumb: 'up' })
+    await addMedia('game', 'Celeste', 'done', '2026-11-01', { thumb: 'meh' })
+    await addMedia('game', 'Inside', 'done', '2026-10-15')
+    const games = await listMedia('game')
+    expect(sortMedia(games, 'date').map((game) => game.title)).toEqual(['Celeste', 'Inside', 'Hades'])
+    expect(sortMedia(games, 'rating').map((game) => game.title)).toEqual(['Hades', 'Celeste', 'Inside'])
   })
 })

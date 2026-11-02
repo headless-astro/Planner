@@ -9,10 +9,15 @@
   import clockCounterClockwise from '@phosphor-icons/core/assets/bold/clock-counter-clockwise-bold.svg?raw'
   import files from '@phosphor-icons/core/assets/bold/files-bold.svg?raw'
   import gear from '@phosphor-icons/core/assets/bold/gear-bold.svg?raw'
+  import heart from '@phosphor-icons/core/assets/bold/heart-bold.svg?raw'
+  import heartFill from '@phosphor-icons/core/assets/fill/heart-fill.svg?raw'
   import listChecks from '@phosphor-icons/core/assets/bold/list-checks-bold.svg?raw'
+  import minus from '@phosphor-icons/core/assets/bold/minus-bold.svg?raw'
   import notebook from '@phosphor-icons/core/assets/bold/notebook-bold.svg?raw'
   import notepad from '@phosphor-icons/core/assets/bold/notepad-bold.svg?raw'
   import plusCircle from '@phosphor-icons/core/assets/bold/plus-circle-bold.svg?raw'
+  import thumbsDown from '@phosphor-icons/core/assets/bold/thumbs-down-bold.svg?raw'
+  import thumbsUp from '@phosphor-icons/core/assets/bold/thumbs-up-bold.svg?raw'
   import user from '@phosphor-icons/core/assets/bold/user-bold.svg?raw'
 
   const ICONS = {
@@ -24,10 +29,15 @@
     'clock-counter-clockwise': clockCounterClockwise,
     files,
     gear,
+    heart,
+    'heart-fill': heartFill,
     'list-checks': listChecks,
+    minus,
     notebook,
     notepad,
     'plus-circle': plusCircle,
+    'thumbs-down': thumbsDown,
+    'thumbs-up': thumbsUp,
     user,
   } as const
 

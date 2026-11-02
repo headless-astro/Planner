@@ -1646,3 +1646,74 @@ table.numbers th[scope='row'] {
   outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
+
+/* Media: hearts, thumbs and the order picker */
+
+.heart {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.heart[aria-pressed='true'] {
+  color: var(--warn);
+}
+
+.seg.thumbs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumb-mark {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.thumb-mark .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.detail.rated {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.media-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.seg.order button {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+}
+
+.add-media .title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.add-media .title-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.media-subtabs .fav-tab {
+  flex: 0 0 56px;
+}

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.svelte'
 import { db } from './lib/db'
 import { listDrawingLogs } from './lib/drawing'
-import { listMedia } from './lib/media'
+import { addMedia, listMedia } from './lib/media'
 import { getWeek, listDoses, listHabits, listSnackDefs, setEntry, setMeasurement } from './lib/repo'
 import { getSyncState, linkFor } from './lib/sync'
 import { setRoutineDone } from './lib/routines'
@@ -324,7 +324,7 @@ describe('Drawing', () => {
 })
 
 describe('Books, games and shows', () => {
-  it('adds a book, and finishing it ticks Read and asks for a rating', async () => {
+  it('adds a book, and finishing it ticks Read and asks for a thumb', async () => {
     await open('#/books')
     const input = document.querySelector('input[aria-label="New book"]')
     type(input, 'Dune')
@@ -333,15 +333,34 @@ describe('Books, games and shows', () => {
     click(document.querySelector('.list .button'))
     await vi.waitFor(async () => expect((await db.entries.get('2026-11-02|tick:read'))?.value).toBe(true))
     await vi.waitFor(() => expect(text()).toContain('How was it?'))
-    click(document.querySelector('.rate button[aria-label="4 of 5"]'))
-    await vi.waitFor(async () => expect((await listMedia('book'))[0].rating).toBe(4))
+    click(document.querySelector('.rate button[aria-label="Enjoyed it"]'))
+    await vi.waitFor(async () => expect((await listMedia('book'))[0]).toMatchObject({ thumb: 'up', rating: null }))
   })
 
-  it('switches to games and shows', async () => {
+  it('movies and shows are separate tabs', async () => {
     await open('#/books')
     go('#/shows')
-    await vi.waitFor(() => expect(heading()).toBe('Movies & shows'))
-    expect(document.querySelector('a[aria-current="page"].chip')?.textContent).toBe('Movies & shows')
+    await vi.waitFor(() => expect(heading()).toBe('Shows'))
+    expect(document.querySelector('a[aria-current="page"].chip')?.textContent).toBe('Shows')
+    type(document.querySelector('input[aria-label="New show"]'), 'Severance')
+    submit(document.querySelector('input[aria-label="New show"]'))
+    await vi.waitFor(() => expect(text()).toContain('Severance'))
+    expect((await listMedia('watch'))[0]).toMatchObject({ format: 'show' })
+    go('#/movies')
+    await vi.waitFor(() => expect(heading()).toBe('Movies'))
+    expect(text()).not.toContain('Severance')
+  })
+
+  it('hearts one, and the heart sub-tab shows only favourites', async () => {
+    await addMedia('game', 'Hades', 'done', '2026-11-01')
+    await addMedia('game', 'Celeste', 'done', '2026-11-02')
+    await open('#/games')
+    await vi.waitFor(() => expect(document.querySelector('button[aria-label=\'Add "Hades" to favourites\']')).toBeTruthy())
+    click(document.querySelector('button[aria-label=\'Add "Hades" to favourites\']'))
+    await vi.waitFor(async () => expect((await listMedia('game')).find((game) => game.title === 'Hades')?.favorite).toBe(true))
+    go('#/games/favorites')
+    await vi.waitFor(() => expect(text()).toContain('Hades'))
+    expect(text()).not.toContain('Celeste')
   })
 
   it('the More tab opens on Books', async () => {
@@ -352,13 +371,13 @@ describe('Books, games and shows', () => {
   })
 
   it('adds a movie watched in the past with its dates and rating in one go', async () => {
-    await open('#/shows')
-    type(document.querySelector('input[aria-label="New movie or show"]'), 'Paterson')
+    await open('#/movies')
+    type(document.querySelector('input[aria-label="New movie"]'), 'Paterson')
     click([...document.querySelectorAll('.add-media .seg button')].find((button) => button.textContent === 'Finished'))
     await vi.waitFor(() => expect(document.querySelectorAll('.add-media input[type="date"]')).toHaveLength(2))
     for (const field of document.querySelectorAll('.add-media input[type="date"]')) type(field, '2026-09-12')
     click(document.querySelector('.add-media button[aria-label="5 of 5"]'))
-    submit(document.querySelector('input[aria-label="New movie or show"]'))
+    submit(document.querySelector('input[aria-label="New movie"]'))
     await vi.waitFor(async () =>
       expect((await listMedia('watch'))[0]).toMatchObject({ title: 'Paterson', started: '2026-09-12', finished: '2026-09-12', rating: 5 }),
     )

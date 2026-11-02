@@ -176,6 +176,8 @@ export interface CookedLog extends Synced {
 
 export type MediaKind = 'book' | 'game' | 'watch'
 export type MediaStatus = 'want' | 'active' | 'done' | 'stopped'
+/** Enjoyed it, it was fine, or didn't enjoy it. */
+export type Thumb = 'up' | 'meh' | 'down'
 
 /** A book, game, movie or show (PLAN.md S18). */
 export interface MediaItem extends Synced {
@@ -189,8 +191,12 @@ export interface MediaItem extends Synced {
   status: MediaStatus
   started: string | null
   finished: string | null
-  /** 1–5 */
+  /** 1–5 stars. Movies only now; books, games and shows use `thumb`. */
   rating: number | null
+  /** Books, games and shows. Missing on older ones, which may still have a `rating`. */
+  thumb?: Thumb | null
+  /** Hearted: a favourite, apart from how it was rated. */
+  favorite?: boolean
   notes: string
   /** The year a film came out, for films brought in from Letterboxd. */
   year?: number | null
