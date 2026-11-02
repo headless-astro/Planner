@@ -5,9 +5,9 @@
 <section>
   <h2>Plans</h2>
   <ul class="list more-list">
-    <li><a href="#/week"><span class="label">Week plan</span><span class="detail">This week's rhythm, day by day</span></a></li>
+    <li><a href="#/week"><span class="label">Week plan</span><span class="detail">This week day by day; change your usual week here</span></a></li>
     <li><a href="#/study"><span class="label">Tech study</span><span class="detail">The 37 topics, your notes, what's next</span></a></li>
-    <li><a href="#/spanish"><span class="label">Spanish</span><span class="detail">Video hours, the book, reading</span></a></li>
+    <li><a href="#/spanish"><span class="label">Spanish</span><span class="detail">Videos, the book, reading, exercises, and what you did</span></a></li>
     <li><a href="#/drawing"><span class="label">Drawing</span><span class="detail">Areas, exercises and sources, your sessions</span></a></li>
     <li><a href="#/tracks"><span class="label">Practice</span><span class="detail">Short tracks like the driving month</span></a></li>
   </ul>

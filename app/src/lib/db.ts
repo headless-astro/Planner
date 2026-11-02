@@ -137,15 +137,17 @@ export interface Topic extends Synced {
   doneDate: string | null
 }
 
-/** Spanish practice: video minutes, a book session or reading pages (PLAN.md 7.5). */
+/** Spanish practice: video minutes, a book session, reading pages or exercises (PLAN.md 7.5). */
 export interface SpanishLog extends Synced {
   date: string
-  kind: 'video' | 'book' | 'reading'
+  kind: 'video' | 'book' | 'reading' | 'exercise'
   minutes: number | null
   /** For a book session: the unit, or null for a review session. */
   unit: number | null
   pages: number | null
   title: string
+  /** What you did: exercises, extras, the grammar point (F31). Missing on logs from before M6. */
+  notes?: string
 }
 
 /** A go-to meal (PLAN.md 7.1). */

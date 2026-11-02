@@ -17,8 +17,13 @@ import {
   DEFAULT_SPANISH,
   DEFAULT_STAPLES,
   DEFAULT_TARGETS,
+  DEFAULT_APPEARANCE,
+  DEFAULT_FOOD_RULES,
   DEFAULT_TOPICS,
   DEFAULT_TRACKS,
+  WEEK_TEMPLATE,
+  type Appearance,
+  type DayTemplate,
   type Reminders,
   type Targets,
   type TimeOfDay,
@@ -148,6 +153,37 @@ export async function updateTargets(changes: Partial<Targets>): Promise<void> {
 export async function updateReminders(changes: Partial<Reminders>): Promise<void> {
   await db.settings.put({ id: 'reminders', value: { ...(await getReminders()), ...changes }, updatedAt: now() })
 }
+
+/** Colours (F28). They sync, so both devices look the same. */
+export const getAppearance = () => getSetting<Appearance>('appearance', DEFAULT_APPEARANCE)
+
+export async function updateAppearance(changes: Partial<Appearance>): Promise<void> {
+  await db.settings.put({ id: 'appearance', value: { ...(await getAppearance()), ...changes }, updatedAt: now() })
+}
+
+/** The food rules shown on Today (F29). */
+export const getFoodRules = async () => (await getSetting<{ rules: string[] }>('foodRules', { rules: DEFAULT_FOOD_RULES })).rules
+
+export async function updateFoodRules(rules: string[]): Promise<void> {
+  await db.settings.put({ id: 'foodRules', value: { rules }, updatedAt: now() })
+}
+
+/** The week's rhythm, Monday first (F30). Days that were never changed keep the starting week. */
+export async function getWeek(): Promise<DayTemplate[]> {
+  const { days } = await getSetting<{ days: unknown }>('week', { days: WEEK_TEMPLATE })
+  return WEEK_TEMPLATE.map((start, index) => {
+    const saved: unknown = Array.isArray(days) ? days[index] : undefined
+    return typeof saved === 'object' && saved !== null ? { ...start, ...(saved as Partial<DayTemplate>) } : start
+  })
+}
+
+export async function updateWeekDay(index: number, changes: Partial<DayTemplate>): Promise<void> {
+  const days = await getWeek()
+  days[index] = { ...days[index], ...changes }
+  await db.settings.put({ id: 'week', value: { days }, updatedAt: now() })
+}
+
+export const resetWeek = () => softDelete(db.settings, 'week')
 
 // ── Day values: ticks, work rating, food rules, diary, note ──
 

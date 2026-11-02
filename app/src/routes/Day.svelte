@@ -2,7 +2,7 @@
   import { countCrunchDays, endCrunch, isCrunchDay, listCrunches, startCrunch } from '../lib/crunch'
   import { addDays, formatShort, parseDate, toISODate, weekStart } from '../lib/dates'
   import type { Crunch, Dose, DrawingArea, DrawingLog, Entry, Habit, Snack, SnackDef, SpanishLog, Task, Topic, Track, TrackSession } from '../lib/db'
-  import { listDrawingAreas, listDrawingLogs, setDrawingSession } from '../lib/drawing'
+  import { listDrawingAreas, listDrawingLogs, saveDrawingLog, setDrawingSession } from '../lib/drawing'
   import { live } from '../lib/live.svelte'
   import { TRACK_ITEM_PREFIX, buildDay, type PlanItem } from '../lib/plan'
   import {
@@ -13,9 +13,11 @@
     getDayMeasurements,
     getDayValues,
     getEntriesBetween,
+    getFoodRules,
     getSnacks,
     getTargets,
     getTodos,
+    getWeek,
     listDoses,
     listHabits,
     listSnackDefs,
@@ -29,8 +31,8 @@
     type DayValues,
   } from '../lib/repo'
   import { dueText, getRoutineStatuses, setRoutineDone, type RoutineStatus } from '../lib/routines'
-  import { DEFAULT_SPANISH, DEFAULT_TARGETS } from '../lib/setup'
-  import { getSpanishSettings, listSpanishLogs, saveDayLog, setBookSession } from '../lib/spanish'
+  import { DEFAULT_FOOD_RULES, DEFAULT_SPANISH, DEFAULT_TARGETS, type DayTemplate } from '../lib/setup'
+  import { getSpanishSettings, listSpanishLogs, saveBookSession, saveDayLog, setBookSession, type DailyKind } from '../lib/spanish'
   import { listTopics, setTopicDone } from '../lib/study'
   import { dueLabel, getDueTasks, setTaskDone, type DueTask } from '../lib/tasks'
   import { trackSetup } from '../lib/trackSetup'
@@ -50,6 +52,9 @@
   const habits = live(() => listHabits, [] as Habit[])
   const snackDefs = live(() => listSnackDefs, [] as SnackDef[])
   const targets = live(() => getTargets, DEFAULT_TARGETS)
+  // Null until loaded, so the day isn't laid out from the starting week for a moment.
+  const week = live<DayTemplate[] | null>(() => getWeek, null)
+  const foodRules = live(() => getFoodRules, DEFAULT_FOOD_RULES)
   const tracks = live(() => listTracks, [] as Track[])
   const crunches = live(() => listCrunches, [] as Crunch[])
   const values = live(() => () => getDayValues(date), {} as DayValues)
@@ -84,6 +89,7 @@
 
   const plan = $derived(
     buildDay(parseDate(date), {
+      week: week.current ?? undefined,
       doses: doses.current,
       tracks: tracks.current,
       studyTopic: slots.studyTopic,
@@ -117,7 +123,7 @@
   let newTodo = $state('')
 
   const ticked = (id: string) => values.current[`tick:${id}`] === true
-  const dayLog = (kind: 'video' | 'reading') => daySpanish.find((log) => log.id === `${date}|${kind}`)
+  const dayLog = (kind: DailyKind) => daySpanish.find((log) => log.id === `${date}|${kind}`)
 
   /** Most items are plain ticks; tech study, the Spanish book and drawing also log a session. */
   async function tick(item: PlanItem) {
@@ -159,9 +165,14 @@
   // wins over what's stored, so a save landing mid-word can't undo a keystroke.
   let drafts = $state<Record<string, string>>({})
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** Where each draft is saved. By default it's a value for the day under its key. */
+  const savers = new Map<string, (text: string) => Promise<void>>()
 
-  function editText(key: string, text: string) {
+  const saveEntry = (key: string) => (text: string) => (text.trim() ? setEntry(date, key, text) : clearEntry(date, key))
+
+  function editText(key: string, text: string, save = saveEntry(key)) {
     drafts[key] = text
+    savers.set(key, save)
     clearTimeout(timers.get(key))
     timers.set(key, setTimeout(() => void saveText(key), 500))
   }
@@ -171,8 +182,35 @@
     timers.delete(key)
     const text = drafts[key]
     if (text === undefined) return
-    if (text.trim()) await setEntry(date, key, text)
-    else await clearEntry(date, key)
+    await (savers.get(key) ?? saveEntry(key))(text)
+  }
+
+  // ── Notes on what you did (F31): any ticked item except meds. Tech study keeps its notes
+  // with the topic; Spanish and drawing keep theirs with the session, so their screens show them.
+  const doseIds = $derived(new Set(doses.current.map((dose) => dose.id)))
+  const takesNote = (item: PlanItem) => !doseIds.has(item.id) && item.id !== 'study' && item.id !== 'weigh-in'
+  const dayDrawing = $derived(drawingLogs.current.find((log) => log.date === date))
+
+  function storedNote(item: PlanItem): string {
+    if (item.id === 'spanish-book') return daySpanish.find((log) => log.id === `${date}|book`)?.notes ?? ''
+    if (item.id === 'spanish' && item.practice) return dayLog(item.practice)?.notes ?? ''
+    if (item.id === 'drawing-study') return dayDrawing?.note ?? ''
+    return storedText(`note:${item.id}`)
+  }
+
+  function noteSaver(item: PlanItem): (text: string) => Promise<void> {
+    const kind = item.practice
+    if (item.id === 'spanish-book') return (text) => saveBookSession(date, { notes: text.trim() })
+    if (item.id === 'spanish' && kind) return (text) => saveDayLog(date, kind, { notes: text.trim() })
+    if (item.id === 'drawing-study') return (text) => saveDrawingLog(date, { note: text.trim() })
+    return saveEntry(`note:${item.id}`)
+  }
+
+  const NOTE_HINTS: Record<string, string> = {
+    'spanish-book': 'What you did: the parts of the unit, extra exercises, the grammar point…',
+    spanish: 'What you watched, read or practised…',
+    'drawing-study': 'What you drew, and how it went…',
+    workout: 'What you did, and how it felt…',
   }
 
   async function finishText(key: string) {
@@ -239,6 +277,21 @@
         <ul>
           {#each item.steps as step (step)}<li>{step}</li>{/each}
         </ul>
+      </details>
+    {/if}
+    {#if takesNote(item) && ticked(item.id)}
+      {@const key = `note:${item.id}`}
+      {@const note = drafts[key] ?? storedNote(item)}
+      <details class="steps note" open={!!note}>
+        <summary>{note ? 'Note' : 'Add a note'}</summary>
+        <textarea
+          rows="2"
+          aria-label="Note: {item.label}"
+          placeholder={NOTE_HINTS[item.id] ?? 'Anything worth noting…'}
+          value={note}
+          oninput={(event) => editText(key, event.currentTarget.value, noteSaver(item))}
+          onblur={() => finishText(key)}
+        ></textarea>
       </details>
     {/if}
   </li>
@@ -351,14 +404,15 @@
   </div>
 {/if}
 
-<section>
+{#if week.current}
+<section class="part morning">
   <h2>Morning</h2>
   <ul class="list">
     {#each plan.morning as item (item.id)}{@render itemRow(item)}{/each}
   </ul>
 </section>
 
-<section>
+<section class="part anytime">
   <h2>Any time</h2>
   <ul class="list">
     {#each plan.anytime as item (item.id)}{@render itemRow(item)}{/each}
@@ -457,7 +511,7 @@
   </div>
 </section>
 
-<section>
+<section class="part evening">
   <h2>Evening</h2>
   {#if plan.evening.length}
     <ul class="list">
@@ -472,6 +526,13 @@
         <button type="button" aria-pressed={values.current.rules === 'kept'} onclick={() => choose('rules', 'kept')}>Kept</button>
         <button type="button" aria-pressed={values.current.rules === 'slip'} onclick={() => choose('rules', 'slip')}>Slip</button>
       </div>
+      <details class="rules">
+        <summary>See the rules</summary>
+        <ol>
+          {#each foodRules.current as rule, index (index)}<li>{rule}</li>{/each}
+        </ol>
+        <a class="small" href="#/setup">Change the rules in Setup</a>
+      </details>
     </div>
   {:else}
     <p class="field muted">Free day: the food rules are off today.</p>
@@ -507,6 +568,7 @@
     ></textarea>
   </label>
 </section>
+{/if}
 
 <section>
   <h2>Also today</h2>

@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db, type DrawingArea, type DrawingLog } from './db'
-import { deleteDrawingLog, drawingAreaFor, listDrawingAreas, listDrawingLogs, saveDrawingLog, setDrawingSession, textLines } from './drawing'
+import { deleteDrawingLog, drawingAreaFor, listDrawingAreas, listDrawingLogs, saveDrawingLog, setDrawingSession } from './drawing'
 import { linkParts } from './links'
 import { ensureSeeded, getDayValues } from './repo'
+import { textLines } from './text'
 
 const area = (id: string, order: number): DrawingArea => ({ id, name: id, exercises: [], sources: [], order, updatedAt: 0 })
 const log = (date: string, areaId: string): DrawingLog => ({ id: `${date}|drawing`, date, areaId, exercise: '', minutes: null, note: '', updatedAt: 0 })

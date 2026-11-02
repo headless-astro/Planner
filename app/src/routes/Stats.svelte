@@ -5,7 +5,7 @@
   import { live } from '../lib/live.svelte'
   import { getMeasurements } from '../lib/repo'
   import { getStats, type Stats } from '../lib/stats'
-  import { listTopics, studyProgress } from '../lib/study'
+  import { listTopics, topicsDone } from '../lib/study'
 
   let { today }: { today: string } = $props()
 
@@ -13,7 +13,6 @@
   const weights = live(() => () => getMeasurements('weight'), [] as Measurement[])
   const topics = live(() => listTopics, [] as Topic[])
 
-  const study = $derived(studyProgress(topics.current, today))
   const points = $derived(weights.current.map((row) => ({ date: row.date, value: row.value })))
   const weeks = $derived(stats.current ? [...stats.current.weeks].reverse() : [])
   const percent = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0)
@@ -45,7 +44,7 @@
     </div>
     <div class="tile">
       <span class="tile-label">Tech topics</span>
-      <span class="tile-value">{study.done} of {study.total}</span>
+      <span class="tile-value">{topicsDone(topics.current)} of {topics.current.length}</span>
     </div>
   </div>
 

@@ -4,7 +4,7 @@ import App from './App.svelte'
 import { db } from './lib/db'
 import { listDrawingLogs } from './lib/drawing'
 import { listMedia } from './lib/media'
-import { listDoses, listHabits, listSnackDefs, setEntry, setMeasurement } from './lib/repo'
+import { getWeek, listDoses, listHabits, listSnackDefs, setEntry, setMeasurement } from './lib/repo'
 import { getSyncState, linkFor } from './lib/sync'
 import { setRoutineDone } from './lib/routines'
 import { listTopics } from './lib/study'
@@ -110,8 +110,24 @@ describe('Today', () => {
 
   it('saves the food diary as you type', async () => {
     await open()
-    type(document.querySelector('textarea'), 'lentil soup, yogurt')
+    type(document.querySelector('textarea[placeholder="Roughly what you ate today"]'), 'lentil soup, yogurt')
     await vi.waitFor(async () => expect((await db.entries.get('2026-11-02|diary'))?.value).toBe('lentil soup, yogurt'))
+  })
+
+  it('shows the food rules when you want to see them', async () => {
+    await open()
+    await vi.waitFor(() => expect(text()).toContain('See the rules'))
+    expect(text()).toContain('The kitchen closes at 00:00')
+  })
+
+  it('takes a note on what you did once an item is ticked', async () => {
+    await open()
+    await vi.waitFor(() => expect(checkboxFor('Workout')).toBeTruthy())
+    expect(document.querySelector('textarea[aria-label^="Note: Workout"]')).toBeNull()
+    click(checkboxFor('Workout'))
+    await vi.waitFor(() => expect(document.querySelector('textarea[aria-label^="Note: Workout"]')).toBeTruthy())
+    type(document.querySelector('textarea[aria-label^="Note: Workout"]'), '3 rounds, knees fine')
+    await vi.waitFor(async () => expect((await db.entries.get('2026-11-02|note:workout'))?.value).toBe('3 rounds, knees fine'))
   })
 })
 
@@ -121,6 +137,21 @@ describe('Week', () => {
     expect(heading()).toBe('This week')
     expect(document.querySelectorAll('.daycard')).toHaveLength(7)
     expect(document.querySelector('.daycard.today')?.textContent).toContain('Monday')
+  })
+
+  it('can be changed, and Today follows', async () => {
+    await open('#/week')
+    click(buttonByText('Change the week'))
+    const monday = document.querySelector('.daycard select')
+    if (!(monday instanceof HTMLSelectElement)) throw new Error('no select')
+    monday.value = 'drawing'
+    monday.dispatchEvent(new Event('change', { bubbles: true }))
+    await vi.waitFor(async () => expect((await getWeek())[0].morning).toBe('drawing'))
+    click(buttonByText('Done'))
+    go('#/today')
+    await vi.waitFor(() => expect(heading()).toBe('Monday'))
+    await vi.waitFor(() => expect(text()).toContain('Drawing → Anatomy'))
+    expect(text()).not.toContain('Tech study → #1')
   })
 })
 
@@ -144,6 +175,13 @@ describe('Setup', () => {
     await vi.waitFor(async () => expect((await listDoses()).map((dose) => dose.label)).toContain('Meds · with lunch'))
     go('#/today')
     await vi.waitFor(() => expect(text()).toContain('Meds · with lunch'))
+  })
+
+  it('switches the colours', async () => {
+    await open('#/setup')
+    click(buttonByText('Mint'))
+    await vi.waitFor(() => expect(document.documentElement.dataset.palette).toBe('mint'))
+    expect(document.querySelector('.swatch[aria-pressed="true"]')?.textContent).toContain('Mint')
   })
 
   it('adds a habit with a target and a snack with its calories', async () => {
@@ -219,6 +257,29 @@ describe('Spanish', () => {
     await vi.waitFor(() => expect(checkboxFor('Spanish book')?.checked).toBe(true))
     go('#/spanish')
     await vi.waitFor(() => expect(text()).toContain('1 review session'))
+  })
+
+  it('keeps what you did in a book session, written on Today', async () => {
+    vi.setSystemTime(new Date(2026, 10, 3, 12, 0))
+    await open()
+    await vi.waitFor(() => expect(checkboxFor('Spanish book')).toBeTruthy())
+    click(checkboxFor('Spanish book'))
+    await vi.waitFor(() => expect(document.querySelector('textarea[aria-label^="Note: Spanish book"]')).toBeTruthy())
+    type(document.querySelector('textarea[aria-label^="Note: Spanish book"]'), 'Review of units 1–2, plus 2 extra worksheets')
+    await vi.waitFor(async () => expect((await db.spanishLogs.get('2026-11-03|book'))?.notes).toBe('Review of units 1–2, plus 2 extra worksheets'))
+    go('#/spanish')
+    await vi.waitFor(() => expect(text()).toContain('plus 2 extra worksheets'))
+  })
+
+  it('logs a book session with what you did from the Spanish screen', async () => {
+    await open('#/spanish')
+    click(buttonByText('Book'))
+    click([...document.querySelectorAll('label.inline-check')].find((label) => label.textContent?.includes('Review session'))?.querySelector('input'))
+    type(document.querySelector('input[placeholder="3"]'), '3')
+    type(document.querySelector('form.edit-panel textarea'), 'Unit 3 reading, exercises 1–4')
+    submit(document.querySelector('form.edit-panel input[type="date"]'))
+    await vi.waitFor(() => expect(text()).toContain('Book: unit 3'))
+    expect(text()).toContain('Unit 3 reading, exercises 1–4')
   })
 })
 

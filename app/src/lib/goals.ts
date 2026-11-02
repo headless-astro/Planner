@@ -9,7 +9,7 @@ import { WEEKLY_LOSS_GOAL, type GoalMeasure } from './setup'
 import { dsProgress, listSpanishLogs, videoMinutes } from './spanish'
 import { goalWeight } from './stats'
 import { alive, byOrder, newId, nextOrder, now, softDelete, update } from './store'
-import { listTopics, studyProgress } from './study'
+import { listTopics, topicsDone } from './study'
 
 /** The progress lines a goal can show, by name. */
 export const GOAL_MEASURES: Record<GoalMeasure, string> = {
@@ -111,7 +111,6 @@ export async function getGoalProgress(today: string): Promise<Record<GoalMeasure
     (key: string, value: unknown) =>
       value === true && ids.some((id) => key === `tick:${id}`)
 
-  const study = studyProgress(topics, today)
   const ds = dsProgress(videoMinutes(spanishLogs))
   const area = drawingAreaFor(areas, drawingLogs, today)
   const year = today.slice(0, 4)
@@ -128,7 +127,7 @@ export async function getGoalProgress(today: string): Promise<Record<GoalMeasure
       text: `${count(daysWhere(ticked('drawing', 'drawing-study')), 'drawing day')} in the last 4 weeks${area ? ` · this week: ${area.name}` : ''}`,
       href: '#/drawing',
     },
-    study: { text: `${study.done} of ${study.total} tech topics done`, href: '#/study' },
+    study: { text: `${topicsDone(topics)} of ${topics.length} tech topics done`, href: '#/study' },
     spanish: { text: `${ds.hours.toFixed(1)} h of Dreaming Spanish · level ${ds.level}${nextLevel}`, href: '#/spanish' },
     reading: {
       text: `${count(finishedIn(books, year), 'book')} finished in ${year} · read on ${count(daysWhere(ticked('read')), 'day')} in the last 4 weeks`,

@@ -62,36 +62,87 @@ export const DEFAULT_SNACKS: { id: string; name: string; kcal: number }[] = [
 
 export type MorningBlock = 'tech' | 'spanish-book' | 'drawing' | 'free' | 'review'
 export type WorkoutKind = 'strength' | 'cardio' | 'yoga' | 'long-cardio' | 'rest'
+export type SpanishKind = 'video' | 'exercise' | 'reading'
 
 export interface DayTemplate {
   morning: MorningBlock
   workout: WorkoutKind
-  /** The day's Spanish floor, if any, and what kind of practice it is. */
-  spanishFloor: string | null
-  spanishKind: 'video' | 'exercise' | 'reading' | null
+  /** The day's Spanish floor (PLAN.md 7.5), or null for none. */
+  spanish: SpanishKind | null
   /** False on the free day. */
   foodRules: boolean
   weighIn: boolean
 }
 
-const VIDEO = { spanishFloor: 'Spanish: 1 video', spanishKind: 'video' } as const
-
-/** Monday first. */
+/** Monday first. Changed on the Week screen (F30); this is the starting week. */
 export const WEEK_TEMPLATE: DayTemplate[] = [
-  { morning: 'tech', workout: 'strength', ...VIDEO, foodRules: true, weighIn: false },
-  { morning: 'spanish-book', workout: 'cardio', ...VIDEO, foodRules: true, weighIn: false },
-  { morning: 'tech', workout: 'yoga', ...VIDEO, foodRules: true, weighIn: false },
-  { morning: 'spanish-book', workout: 'strength', ...VIDEO, foodRules: true, weighIn: false },
-  { morning: 'drawing', workout: 'cardio', spanishFloor: 'Spanish: revise / exercise', spanishKind: 'exercise', foodRules: true, weighIn: false },
-  { morning: 'free', workout: 'long-cardio', spanishFloor: 'Spanish: reading book', spanishKind: 'reading', foodRules: true, weighIn: true },
-  { morning: 'review', workout: 'rest', spanishFloor: null, spanishKind: null, foodRules: false, weighIn: false },
+  { morning: 'tech', workout: 'strength', spanish: 'video', foodRules: true, weighIn: false },
+  { morning: 'spanish-book', workout: 'cardio', spanish: 'video', foodRules: true, weighIn: false },
+  { morning: 'tech', workout: 'yoga', spanish: 'video', foodRules: true, weighIn: false },
+  { morning: 'spanish-book', workout: 'strength', spanish: 'video', foodRules: true, weighIn: false },
+  { morning: 'drawing', workout: 'cardio', spanish: 'exercise', foodRules: true, weighIn: false },
+  { morning: 'free', workout: 'long-cardio', spanish: 'reading', foodRules: true, weighIn: true },
+  { morning: 'review', workout: 'rest', spanish: null, foodRules: false, weighIn: false },
 ]
+
+/** Names for the week editor's choices. */
+export const MORNING_BLOCKS: Record<MorningBlock, string> = {
+  tech: 'Tech study',
+  'spanish-book': 'Spanish book',
+  drawing: 'Drawing',
+  review: 'Weekly review',
+  free: 'Free',
+}
+
+export const WORKOUTS: Record<WorkoutKind, string> = {
+  strength: 'Strength',
+  cardio: 'Cardio',
+  yoga: 'Yoga or pilates',
+  'long-cardio': 'Longer cardio or badminton',
+  rest: 'Rest',
+}
+
+/** The Spanish floor for each kind of practice. */
+export const SPANISH_FLOORS: Record<SpanishKind, string> = {
+  video: 'Spanish: 1 video',
+  exercise: 'Spanish: revise / exercise',
+  reading: 'Spanish: reading book',
+}
+
+// ── Food rules, Monday to Saturday (PLAN.md 7.1, D25). Shown on Today, changed in Setup. ──
+
+export const DEFAULT_FOOD_RULES: string[] = [
+  'Three meals, none skipped: a first meal soon after waking, a main meal mid-afternoon, dinner in the evening.',
+  'Every meal follows the plate: half vegetables, a quarter protein, a quarter carbs.',
+  'No junk: crisps and chips, pastries, fast food, sugary drinks, and sweets beyond the snack budget.',
+  'Snacks: up to 200 kcal a day in all. Sweet is fine inside the budget, best right after a meal.',
+  'The kitchen closes at 00:00. After that, only water or unsweetened tea.',
+  'If the meal at home doesn’t fit, adjust it or cook: more vegetables and protein, fewer carbs.',
+  'A slip is one meal, not a lost day. The next meal goes back to the rules.',
+]
+
+// ── Colours (F28) ──
+
+export type Palette = 'lavender' | 'mint' | 'peach' | 'rose' | 'sky'
+
+/** The swatch is the palette's accent, for the picker in Setup. */
+export const PALETTES: { id: Palette; name: string; swatch: string }[] = [
+  { id: 'lavender', name: 'Lavender', swatch: '#c9b8f2' },
+  { id: 'mint', name: 'Mint', swatch: '#a6dfc6' },
+  { id: 'peach', name: 'Peach', swatch: '#f8c8a6' },
+  { id: 'rose', name: 'Rose', swatch: '#f3bbcc' },
+  { id: 'sky', name: 'Sky', swatch: '#b1d2f2' },
+]
+
+export interface Appearance {
+  palette: Palette
+}
+
+export const DEFAULT_APPEARANCE: Appearance = { palette: 'lavender' }
 
 // ── Tech study (PLAN.md 7.4, Appendix B) ──
 
 export const TECH_FLOOR = '10 minutes that fill the row'
-/** D36 */
-export const STUDY_SESSIONS_PER_WEEK = 2
 
 const TOPIC_ROWS: [block: string, title: string, subtopics: string][] = [
   ['A. C# language', 'Revision: value vs reference, structs vs classes, properties', 'Copying, passing, modifying vs reassigning; struct in class; props returning structs; boxing recap. Say it out loud without notes'],

@@ -10,6 +10,7 @@ import {
   PRIMER_START,
   PRIMER_WEEKS,
   SPANISH_BOOK_FLOOR,
+  SPANISH_FLOORS,
   STRENGTH_MOVES,
   STRENGTH_ROUNDS,
   TECH_FLOOR,
@@ -17,6 +18,8 @@ import {
   WEEK_TEMPLATE,
   YOGA_TIPS,
   type DayTemplate,
+  type MorningBlock,
+  type SpanishKind,
   type TimeOfDay,
 } from './setup'
 
@@ -40,6 +43,8 @@ export interface TrackLike {
 
 /** The setup a day is built from; anything left out uses the starting setup. */
 export interface DaySetup {
+  /** The week's rhythm, Monday first (F30). */
+  week?: readonly DayTemplate[]
   doses?: readonly DoseLike[]
   tracks?: readonly TrackLike[]
   /** The tech study topic for the day; null once every topic is done. */
@@ -63,6 +68,8 @@ export interface PlanItem {
   link?: { href: string; text: string }
   /** A number to note once the item is ticked. */
   input?: 'minutes' | 'pages'
+  /** For the Spanish floor: which kind of practice it is. */
+  practice?: SpanishKind
 }
 
 export interface DayPlan {
@@ -171,7 +178,7 @@ export function buildDay(date: Date, setup: DaySetup = {}): DayPlan {
   const doses = setup.doses ?? DEFAULT_DOSES
   const tracks = setup.tracks ?? DEFAULT_TRACKS
   const weekday = weekdayIndex(date)
-  const template = WEEK_TEMPLATE[weekday]
+  const template = (setup.week ?? WEEK_TEMPLATE)[weekday] ?? WEEK_TEMPLATE[weekday]
   const morning: PlanItem[] = []
   const anytime: PlanItem[] = []
   const evening: PlanItem[] = []
@@ -191,9 +198,9 @@ export function buildDay(date: Date, setup: DaySetup = {}): DayPlan {
   if (session) morning.push(session)
 
   anytime.push({ id: 'skin', label: 'Skin routine' })
-  if (template.spanishFloor) {
-    const input = template.spanishKind === 'video' ? 'minutes' : template.spanishKind === 'reading' ? 'pages' : undefined
-    anytime.push({ id: 'spanish', label: template.spanishFloor, input })
+  if (template.spanish) {
+    const input = template.spanish === 'video' ? 'minutes' : template.spanish === 'reading' ? 'pages' : undefined
+    anytime.push({ id: 'spanish', label: SPANISH_FLOORS[template.spanish], input, practice: template.spanish })
   }
   anytime.push(...trackItems(tracks, date))
 
@@ -207,6 +214,10 @@ export function buildDay(date: Date, setup: DaySetup = {}): DayPlan {
     foodRules: template.foodRules,
   }
 }
+
+/** The weekdays (Monday = 0) whose morning slot is a given block. */
+export const daysWith = (week: readonly DayTemplate[], block: MorningBlock) =>
+  week.flatMap((day, index) => (day.morning === block ? [index] : []))
 
 /** Monday to Sunday of the week a date is in. */
 export function weekDates(date: Date): Date[] {

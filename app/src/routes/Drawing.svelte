@@ -10,11 +10,11 @@
     listDrawingLogs,
     moveDrawingArea,
     saveDrawingLog,
-    textLines,
     updateDrawingArea,
     type DrawingLogChanges,
   } from '../lib/drawing'
   import { linkParts } from '../lib/links'
+  import { textLines } from '../lib/text'
   import { live } from '../lib/live.svelte'
 
   let { today }: { today: string } = $props()

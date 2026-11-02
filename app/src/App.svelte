@@ -1,7 +1,9 @@
 <script lang="ts">
   import { parseDate, toISODate, todayISO, weekStart } from './lib/dates'
+  import { live } from './lib/live.svelte'
   import { refreshReminders } from './lib/push'
-  import { ensureSeeded } from './lib/repo'
+  import { ensureSeeded, getAppearance } from './lib/repo'
+  import { DEFAULT_APPEARANCE } from './lib/setup'
   import { getSyncConfig, startSync } from './lib/sync'
   import Day from './routes/Day.svelte'
   import Drawing from './routes/Drawing.svelte'
@@ -110,6 +112,30 @@
 
   const thisMonday = $derived(toISODate(weekStart(parseDate(today))))
   const activeTab = $derived(route.name === 'day' ? 'history' : UNDER_MORE.includes(route.name) ? 'more' : route.name)
+
+  // Colours (F28). The palette is also kept on the device, so index.html can apply it before
+  // the data loads, and the browser's bar takes the page colour.
+  const appearance = live(() => getAppearance, DEFAULT_APPEARANCE)
+
+  function applyPalette(palette: string) {
+    document.documentElement.dataset.palette = palette
+    try {
+      localStorage.setItem('palette', palette)
+    } catch {
+      // Private windows can refuse storage; the colours still apply.
+    }
+    const color = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+    if (color) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color)
+  }
+
+  $effect(() => applyPalette(appearance.current.palette))
+
+  $effect(() => {
+    const dark = window.matchMedia?.('(prefers-color-scheme: dark)')
+    const onChange = () => applyPalette(document.documentElement.dataset.palette ?? DEFAULT_APPEARANCE.palette)
+    dark?.addEventListener?.('change', onChange)
+    return () => dark?.removeEventListener?.('change', onChange)
+  })
 
   ensureSeeded()
     .then(() => {

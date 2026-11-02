@@ -33,7 +33,11 @@ describe('tech study', () => {
   })
 
   it('works out the weeks left at two sessions a week', async () => {
-    const progress = studyProgress(await listTopics(), '2026-11-02')
+    const progress = studyProgress(await listTopics(), '2026-11-02', 2)
     expect(progress).toMatchObject({ done: 0, total: 37, weeksLeft: 19, finish: '2027-03-15' })
+  })
+
+  it('has no finish date when the week has no study mornings', async () => {
+    expect(studyProgress(await listTopics(), '2026-11-02', 0)).toMatchObject({ weeksLeft: null, finish: null })
   })
 })

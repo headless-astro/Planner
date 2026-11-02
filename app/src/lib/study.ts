@@ -1,8 +1,7 @@
-// Tech study: 37 topics in blocks A–F, two sessions a week (PLAN.md 7.4, D36).
+// Tech study: 37 topics in blocks A–F, on the tech study mornings of your week (PLAN.md 7.4, D36).
 import { addDays, parseDate, toISODate } from './dates'
 import { db, type Topic } from './db'
 import { setEntry } from './repo'
-import { STUDY_SESSIONS_PER_WEEK } from './setup'
 import { alive, update } from './store'
 
 export async function listTopics(): Promise<Topic[]> {
@@ -26,22 +25,24 @@ export async function setTopicDone(topicId: string, date: string, done: boolean)
   else if (topic.doneDate) await setEntry(topic.doneDate, 'tick:study', false)
 }
 
+export const topicsDone = (topics: readonly Topic[]) => topics.filter((topic) => topic.doneDate).length
+
 export interface StudyProgress {
   done: number
   total: number
-  /** Weeks left at two sessions a week. */
-  weeksLeft: number
+  /** Weeks left at `perWeek` sessions a week; null with no study days in the week. */
+  weeksLeft: number | null
   /** Roughly when the last topic gets done at that pace. */
   finish: string | null
 }
 
-export function studyProgress(topics: readonly Topic[], today: string): StudyProgress {
+export function studyProgress(topics: readonly Topic[], today: string, perWeek: number): StudyProgress {
   const left = topics.filter((topic) => !topic.doneDate).length
-  const weeksLeft = Math.ceil(left / STUDY_SESSIONS_PER_WEEK)
+  const weeksLeft = perWeek > 0 ? Math.ceil(left / perWeek) : null
   return {
     done: topics.length - left,
     total: topics.length,
     weeksLeft,
-    finish: left ? toISODate(addDays(parseDate(today), weeksLeft * 7)) : null,
+    finish: left && weeksLeft !== null ? toISODate(addDays(parseDate(today), weeksLeft * 7)) : null,
   }
 }

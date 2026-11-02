@@ -11,6 +11,9 @@
     dsProgress,
     getSpanishSettings,
     listSpanishLogs,
+    saveBookSession,
+    setBookSession,
+    updateSpanishLog,
     updateSpanishSettings,
     videoMinutes,
   } from '../lib/spanish'
@@ -25,30 +28,73 @@
   const weekMinutes = $derived(videoMinutes(logs.current.filter((log) => log.date >= monday && log.date <= today)))
   const book = $derived(bookState(logs.current, settings.current))
 
-  let videoMinutesInput = $state<number | null>(null)
-  let videoTitle = $state('')
-  let readingPages = $state<number | null>(null)
-  let readingTitle = $state('')
+  type Kind = SpanishLog['kind']
+  const KINDS: { id: Kind; label: string }[] = [
+    { id: 'video', label: 'Video' },
+    { id: 'book', label: 'Book' },
+    { id: 'reading', label: 'Reading' },
+    { id: 'exercise', label: 'Exercises' },
+  ]
+
+  // The "log practice" form. An empty date means today; an empty unit means the next one.
+  let kind = $state<Kind>('video')
+  let logDate = $state('')
+  let minutes = $state<number | null>(null)
+  let pages = $state<number | null>(null)
+  let title = $state('')
+  let notes = $state('')
+  let unit = $state<number | null>(null)
+  let review = $state<boolean | null>(null)
+  let message = $state<string | null>(null)
+
+  const isReview = $derived(review ?? book.reviewLeft > 0)
 
   function describe(log: SpanishLog): string {
     if (log.kind === 'book') return `Book: ${bookSessionLabel(log)}`
     if (log.kind === 'reading') return `Reading: ${log.pages ?? '?'} pages${log.title ? ` of ${log.title}` : ''}`
+    if (log.kind === 'exercise') return `Exercises${log.title ? `: ${log.title}` : ''}`
     return `Video: ${log.minutes ?? '?'} min${log.title ? ` · ${log.title}` : ''}`
   }
 
-  async function submitVideo(event: SubmitEvent) {
-    event.preventDefault()
-    if (!videoMinutesInput || videoMinutesInput <= 0) return
-    await addSpanishLog(today, 'video', { minutes: Math.round(videoMinutesInput), title: videoTitle.trim() })
-    videoMinutesInput = null
-    videoTitle = ''
+  const positive = (value: number | null) => (value !== null && Number.isFinite(value) && value > 0 ? Math.round(value) : null)
+
+  function wholeOrNull(text: string): number | null {
+    const value = Math.round(Number(text))
+    return text.trim() && Number.isFinite(value) && value > 0 ? value : null
   }
 
-  async function submitReading(event: SubmitEvent) {
+  async function submit(event: SubmitEvent) {
     event.preventDefault()
-    if (!readingPages || readingPages <= 0) return
-    await addSpanishLog(today, 'reading', { pages: Math.round(readingPages), title: readingTitle.trim() })
-    readingPages = null
+    const date = logDate || today
+    const what = notes.trim()
+    message = null
+    if (kind === 'video') {
+      if (!positive(minutes)) return void (message = 'Add the minutes you watched.')
+      await addSpanishLog(date, 'video', { minutes: positive(minutes), title: title.trim(), notes: what })
+    } else if (kind === 'reading') {
+      if (!positive(pages)) return void (message = 'Add the pages you read.')
+      await addSpanishLog(date, 'reading', { pages: positive(pages), title: title.trim(), notes: what })
+    } else if (kind === 'exercise') {
+      if (!what && !title.trim()) return void (message = 'Write what you practised.')
+      await addSpanishLog(date, 'exercise', { title: title.trim(), notes: what })
+    } else {
+      await saveBookSession(date, { unit: isReview ? null : (positive(unit) ?? book.nextUnit), notes: what })
+    }
+    message = 'Logged.'
+    logDate = ''
+    minutes = null
+    pages = null
+    title = ''
+    notes = ''
+    unit = null
+    review = null
+  }
+
+  function remove(log: SpanishLog) {
+    if (!window.confirm('Delete this log?')) return
+    // The day's book session also ticks the book slot on Today, so that goes too.
+    if (log.kind === 'book' && log.id === `${log.date}|book`) void setBookSession(log.date, false)
+    else void deleteSpanishLog(log.id)
   }
 </script>
 
@@ -77,37 +123,99 @@
 </div>
 
 <section>
-  <h2>Log a video</h2>
-  <form class="add-row" onsubmit={submitVideo}>
-    <input type="number" min="1" inputmode="numeric" bind:value={videoMinutesInput} placeholder="min" aria-label="Minutes watched" />
-    <input class="grow" type="text" bind:value={videoTitle} placeholder="Title (optional)" aria-label="Video title" />
-    <button type="submit" class="button">Add</button>
-  </form>
-  <p class="muted small">Minutes noted on Today count too.</p>
-</section>
-
-<section>
-  <h2>Log reading</h2>
-  <form class="add-row" onsubmit={submitReading}>
-    <input type="number" min="1" inputmode="numeric" bind:value={readingPages} placeholder="pages" aria-label="Pages read" />
-    <input class="grow" type="text" bind:value={readingTitle} placeholder="Book" aria-label="Book title" />
-    <button type="submit" class="button">Add</button>
-  </form>
+  <h2>Log practice</h2>
+  <div class="card padded">
+    <div class="seg" role="group" aria-label="Kind of practice">
+      {#each KINDS as option (option.id)}
+        <button type="button" aria-pressed={kind === option.id} onclick={() => (kind = option.id)}>{option.label}</button>
+      {/each}
+    </div>
+    <form class="edit-panel" onsubmit={submit}>
+      <label>
+        Date
+        <input type="date" max={today} value={logDate || today} oninput={(event) => (logDate = event.currentTarget.value)} />
+      </label>
+      {#if kind === 'video'}
+        <label>Minutes <input type="number" min="1" inputmode="numeric" bind:value={minutes} /></label>
+        <label>Title <input type="text" bind:value={title} placeholder="Optional" /></label>
+      {:else if kind === 'reading'}
+        <label>Pages <input type="number" min="1" inputmode="numeric" bind:value={pages} /></label>
+        <label>Book <input type="text" bind:value={title} placeholder="Optional" /></label>
+      {:else if kind === 'exercise'}
+        <label>Site or topic <input type="text" bind:value={title} placeholder="Optional" /></label>
+      {:else}
+        <label class="inline-check">
+          <input type="checkbox" checked={isReview} onchange={(event) => (review = event.currentTarget.checked)} />
+          Review session
+        </label>
+        {#if !isReview}
+          <label>Unit <input type="number" min="1" inputmode="numeric" bind:value={unit} placeholder={String(book.nextUnit)} /></label>
+        {/if}
+      {/if}
+      <label>
+        What you did
+        <textarea
+          rows="3"
+          bind:value={notes}
+          placeholder={kind === 'book' ? 'The parts of the unit, extra exercises, the grammar point…' : 'Anything worth remembering…'}
+        ></textarea>
+      </label>
+      <button type="submit" class="button small">Log it</button>
+    </form>
+    {#if message}<p class="small" role="status">{message}</p>{/if}
+  </div>
+  <p class="muted small">What you tick and write on Today shows here too. One book session a day: logging another one on the same day changes it.</p>
 </section>
 
 <section>
   <h2>Recent</h2>
   {#if logs.current.length}
     <ul class="list">
-      {#each logs.current.slice(0, 30) as log (log.id)}
-        <li class="row row-line padded">
-          <span class="grow"><strong>{formatShort(parseDate(log.date))}</strong> · {describe(log)}</span>
-          <button type="button" class="remove" aria-label="Delete this log" onclick={() => window.confirm('Delete this log?') && deleteSpanishLog(log.id)}>×</button>
+      {#each logs.current.slice(0, 40) as log (log.id)}
+        <li class="row">
+          <div class="routine-head">
+            <span class="text grow">
+              <span class="label"><strong>{formatShort(parseDate(log.date))}</strong> · {describe(log)}</span>
+              {#if log.notes}<span class="detail pre">{log.notes}</span>{/if}
+            </span>
+          </div>
+          <details class="steps">
+            <summary>Edit</summary>
+            <div class="edit-panel">
+              {#if log.kind === 'video'}
+                <label>
+                  Minutes
+                  <input type="number" min="1" value={log.minutes ?? ''} onchange={(event) => updateSpanishLog(log.id, { minutes: wholeOrNull(event.currentTarget.value) })} />
+                </label>
+              {:else if log.kind === 'reading'}
+                <label>
+                  Pages
+                  <input type="number" min="1" value={log.pages ?? ''} onchange={(event) => updateSpanishLog(log.id, { pages: wholeOrNull(event.currentTarget.value) })} />
+                </label>
+              {:else if log.kind === 'book'}
+                <label>
+                  Unit (empty for a review session)
+                  <input type="number" min="1" value={log.unit ?? ''} onchange={(event) => updateSpanishLog(log.id, { unit: wholeOrNull(event.currentTarget.value) })} />
+                </label>
+              {/if}
+              {#if log.kind !== 'book'}
+                <label>
+                  {log.kind === 'exercise' ? 'Site or topic' : log.kind === 'reading' ? 'Book' : 'Title'}
+                  <input type="text" value={log.title} onchange={(event) => updateSpanishLog(log.id, { title: event.currentTarget.value.trim() })} />
+                </label>
+              {/if}
+              <label>
+                What you did
+                <textarea rows="3" value={log.notes ?? ''} onchange={(event) => updateSpanishLog(log.id, { notes: event.currentTarget.value.trim() })}></textarea>
+              </label>
+              <button type="button" class="link danger" onclick={() => remove(log)}>Delete this log</button>
+            </div>
+          </details>
         </li>
       {/each}
     </ul>
   {:else}
-    <p class="muted small">Nothing logged yet. Ticking Spanish on Today and noting the minutes counts here.</p>
+    <p class="muted small">Nothing logged yet. Ticking Spanish on Today and noting what you did counts here.</p>
   {/if}
 </section>
 

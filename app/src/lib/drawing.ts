@@ -16,13 +16,6 @@ export const updateDrawingArea = (id: string, changes: Partial<Pick<DrawingArea,
 export const deleteDrawingArea = (id: string) => softDelete(db.drawingAreas, id)
 export const moveDrawingArea = (id: string, step: -1 | 1) => reorder(db.drawingAreas, id, step)
 
-/** One entry per line of a text box, without the empty lines. */
-export const textLines = (text: string) =>
-  text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
 /** Newest first. */
 export async function listDrawingLogs(): Promise<DrawingLog[]> {
   return alive(await db.drawingLogs.toArray()).sort((a, b) => b.date.localeCompare(a.date))

@@ -10,6 +10,8 @@
     deleteDose,
     deleteHabit,
     deleteSnackDef,
+    getAppearance,
+    getFoodRules,
     getMeta,
     getReminders,
     getTargets,
@@ -20,13 +22,24 @@
     moveHabit,
     moveSnackDef,
     setMeta,
+    updateAppearance,
     updateDose,
+    updateFoodRules,
     updateHabit,
     updateReminders,
     updateSnackDef,
     updateTargets,
   } from '../lib/repo'
-  import { DEFAULT_REMINDERS, DEFAULT_TARGETS, type Targets, type TimeOfDay } from '../lib/setup'
+  import {
+    DEFAULT_APPEARANCE,
+    DEFAULT_FOOD_RULES,
+    DEFAULT_REMINDERS,
+    DEFAULT_TARGETS,
+    PALETTES,
+    type Targets,
+    type TimeOfDay,
+  } from '../lib/setup'
+  import { textLines } from '../lib/text'
 
   const doses = live(() => listDoses, [] as Dose[])
   const habits = live(() => listHabits, [] as Habit[])
@@ -34,6 +47,8 @@
   const targets = live(() => getTargets, DEFAULT_TARGETS)
   const reminders = live(() => getReminders, DEFAULT_REMINDERS)
   const lastExport = live(() => () => getMeta<number>('lastExport'), undefined as number | undefined)
+  const appearance = live(() => getAppearance, DEFAULT_APPEARANCE)
+  const foodRules = live(() => getFoodRules, DEFAULT_FOOD_RULES)
 
   const TIMES: { value: TimeOfDay; label: string }[] = [
     { value: 'morning', label: 'Morning' },
@@ -147,6 +162,24 @@
 </header>
 
 <section>
+  <h2>Colours</h2>
+  <div class="swatches" role="group" aria-label="Colours">
+    {#each PALETTES as palette (palette.id)}
+      <button
+        type="button"
+        class="swatch"
+        style:--swatch={palette.swatch}
+        aria-pressed={appearance.current.palette === palette.id}
+        onclick={() => updateAppearance({ palette: palette.id })}
+      >
+        <span class="swatch-dot" aria-hidden="true"></span>
+        {palette.name}
+      </button>
+    {/each}
+  </div>
+</section>
+
+<section>
   <h2>Meds</h2>
   <ul class="card edit-list">
     {#each doses.current as dose, index (dose.id)}
@@ -230,6 +263,22 @@
       </span>
     {/each}
   </div>
+</section>
+
+<section>
+  <h2>Food rules</h2>
+  <label class="field">
+    <span class="small">One rule per line. They show under "See the rules" on Today, on the days the rules are on.</span>
+    <textarea
+      rows="8"
+      value={foodRules.current.join('\n')}
+      aria-label="Food rules, one per line"
+      onchange={(event) => {
+        const rules = textLines(event.currentTarget.value)
+        void updateFoodRules(rules.length ? rules : DEFAULT_FOOD_RULES)
+      }}
+    ></textarea>
+  </label>
 </section>
 
 <section>

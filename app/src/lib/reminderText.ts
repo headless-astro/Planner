@@ -3,7 +3,7 @@
 import { parseDate, todayISO } from './dates'
 import { listDrawingAreas, listDrawingLogs } from './drawing'
 import { buildDay, type PlanItem } from './plan'
-import { getDayValues, getTodos, listDoses } from './repo'
+import { getDayValues, getTodos, getWeek, listDoses } from './repo'
 import { getRoutineStatuses } from './routines'
 import type { Reminders } from './setup'
 import { getSpanishSettings, listSpanishLogs } from './spanish'
@@ -39,7 +39,8 @@ const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 /** The reminder for the planner day at `now` (it runs until 06:00, D24). */
 export async function reminderText(kind: ReminderKind, now = new Date()): Promise<ReminderText> {
   const date = todayISO(now)
-  const [doses, tracks, topics, spanishLogs, spanishSettings, drawingAreas, drawingLogs, values, todos] = await Promise.all([
+  const [week, doses, tracks, topics, spanishLogs, spanishSettings, drawingAreas, drawingLogs, values, todos] = await Promise.all([
+    getWeek(),
     listDoses(),
     listTracks(),
     listTopics(),
@@ -52,6 +53,7 @@ export async function reminderText(kind: ReminderKind, now = new Date()): Promis
   ])
   const slots = trackSetup(date, { topics, spanishLogs, spanishSettings, drawingAreas, drawingLogs })
   const plan = buildDay(parseDate(date), {
+    week,
     doses,
     tracks,
     studyTopic: slots.studyTopic,

@@ -1,16 +1,26 @@
+/* Colours (F28): soft pastels. Lavender is the starting palette; Setup switches to mint, peach,
+   rose or sky, each with a light and a dark version. Pastel fills (--accent) always sit behind
+   dark text (--on-accent); text, links, focus rings and chart lines use --accent-text, which
+   keeps at least 4.5:1 contrast. Today's three parts each have their own pastel. */
 :root {
-  --bg: #f4f7f7;
+  --bg: #f7f5fc;
   --surface: #ffffff;
-  --text: #15302f;
-  --muted: #5b7271;
-  --line: #dbe6e5;
-  --accent: #0f7c86;
-  --accent-text: #0b6871;
-  --accent-soft: #dff0f1;
-  --on-accent: #ffffff;
-  --warn: #b0521a;
+  --text: #2a2340;
+  --muted: #655e7e;
+  --line: #e6e0f2;
+  --accent: #c9b8f2;
+  --accent-text: #6a50b8;
+  --accent-soft: #f0ebfc;
+  --on-accent: #2a2340;
+  --warn: #b0453c;
+  --morning: #fde4d2;
+  --morning-text: #8a4520;
+  --anytime: #d9f1e5;
+  --anytime-text: #24684d;
+  --evening: #e7e0fa;
+  --evening-text: #5640a0;
   color-scheme: light;
-  accent-color: var(--accent);
+  accent-color: var(--accent-text);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.45;
@@ -20,19 +30,99 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+@media (prefers-color-scheme: light) {
+  :root[data-palette='mint'] {
+    --bg: #f2faf6;
+    --line: #d8eee3;
+    --text: #1d3a2f;
+    --muted: #57736a;
+    --accent: #a6dfc6;
+    --accent-text: #26775a;
+    --accent-soft: #e2f5ec;
+    --on-accent: #1d3a2f;
+  }
+
+  :root[data-palette='peach'] {
+    --bg: #fdf6f0;
+    --line: #f2e0d3;
+    --text: #3b281d;
+    --muted: #7a6153;
+    --accent: #f8c8a6;
+    --accent-text: #a14e24;
+    --accent-soft: #fdeadd;
+    --on-accent: #3b281d;
+  }
+
+  :root[data-palette='rose'] {
+    --bg: #fcf4f7;
+    --line: #f1dce4;
+    --text: #3a2230;
+    --muted: #7a5e6d;
+    --accent: #f3bbcc;
+    --accent-text: #a23a61;
+    --accent-soft: #fce7ee;
+    --on-accent: #3a2230;
+  }
+
+  :root[data-palette='sky'] {
+    --bg: #f3f7fd;
+    --line: #dbe6f4;
+    --text: #1d2d40;
+    --muted: #59697e;
+    --accent: #b1d2f2;
+    --accent-text: #2c639b;
+    --accent-soft: #e5effb;
+    --on-accent: #1d2d40;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0d1617;
-    --surface: #142223;
-    --text: #e2eeed;
-    --muted: #93a8a7;
-    --line: #253839;
-    --accent: #3fb4bf;
-    --accent-text: #6cc9d2;
-    --accent-soft: #173638;
-    --on-accent: #052326;
-    --warn: #f0a46c;
+    --bg: #17141e;
+    --surface: #211d2a;
+    --text: #ece8f4;
+    --muted: #a69fb8;
+    --line: #352f43;
+    --accent: #c9b8f2;
+    --accent-text: #cdbef6;
+    --accent-soft: #342b4b;
+    --on-accent: #221a35;
+    --warn: #f2a198;
+    --morning: #3b2a20;
+    --morning-text: #f6c6a3;
+    --anytime: #1e352c;
+    --anytime-text: #a6dfc6;
+    --evening: #2e2843;
+    --evening-text: #cdbef6;
     color-scheme: dark;
+  }
+
+  :root[data-palette='mint'] {
+    --accent: #a6dfc6;
+    --accent-text: #a6dfc6;
+    --accent-soft: #1f382e;
+    --on-accent: #12261d;
+  }
+
+  :root[data-palette='peach'] {
+    --accent: #f8c8a6;
+    --accent-text: #f8c8a6;
+    --accent-soft: #3d2b20;
+    --on-accent: #2e1d12;
+  }
+
+  :root[data-palette='rose'] {
+    --accent: #f3bbcc;
+    --accent-text: #f3bbcc;
+    --accent-soft: #3d2531;
+    --on-accent: #2e1722;
+  }
+
+  :root[data-palette='sky'] {
+    --accent: #b1d2f2;
+    --accent-text: #b1d2f2;
+    --accent-soft: #1f3046;
+    --on-accent: #142233;
   }
 }
 
@@ -136,7 +226,7 @@ h2 {
   width: 22px;
   height: 22px;
   margin: 1px 0 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-text);
 }
 
 .text {
@@ -199,7 +289,7 @@ textarea:focus-visible,
 button:focus-visible,
 a:focus-visible,
 summary:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 
@@ -298,7 +388,7 @@ summary:focus-visible {
 
 .bar div {
   height: 100%;
-  background: var(--accent);
+  background: var(--accent-text);
   transition: width 0.2s;
 }
 
@@ -422,7 +512,7 @@ a.chip {
 
 .daycard.today {
   border-color: var(--accent);
-  box-shadow: inset 4px 0 0 var(--accent);
+  box-shadow: inset 4px 0 0 var(--accent-text);
 }
 
 .daycard h2 {
@@ -1038,7 +1128,7 @@ table.numbers th[scope='row'] {
 
 .chart-line {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--accent-text);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -1051,7 +1141,7 @@ table.numbers th[scope='row'] {
 }
 
 .chart-dot {
-  fill: var(--accent);
+  fill: var(--accent-text);
   stroke: var(--surface);
   stroke-width: 2;
 }
@@ -1194,4 +1284,115 @@ table.numbers th[scope='row'] {
   height: auto;
   margin: 12px auto;
   border-radius: 8px;
+}
+
+/* Today's three parts, each with its own pastel (F28) */
+
+.part > h2 {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 999px;
+  letter-spacing: 0.06em;
+}
+
+.part.morning > h2 {
+  background: var(--morning);
+  color: var(--morning-text);
+}
+
+.part.anytime > h2 {
+  background: var(--anytime);
+  color: var(--anytime-text);
+}
+
+.part.evening > h2 {
+  background: var(--evening);
+  color: var(--evening-text);
+}
+
+/* The food rules under "See the rules" (F29) */
+
+.rules {
+  font-size: 0.92rem;
+}
+
+.rules summary {
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+.rules ol {
+  margin: 8px 0;
+  padding: 10px 14px 10px 32px;
+  border-radius: 12px;
+  background: var(--evening);
+}
+
+.rules li + li {
+  margin-top: 4px;
+}
+
+/* Notes on what you did (F31) */
+
+.steps.note textarea {
+  margin-top: 6px;
+}
+
+/* Colours in Setup */
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 14px 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.swatch-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+
+.swatch[aria-pressed='true'] {
+  border-color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--accent-text);
+  font-weight: 600;
+}
+
+/* The week editor (F30) */
+
+.week-edit {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px 12px;
+  align-items: end;
+}
+
+.week-edit > label:not(.inline-check) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.week-edit select {
+  width: 100%;
+}
+
+.daycard > h2:only-child,
+.daycard > h2 + .week-edit {
+  margin-top: 0;
 }
