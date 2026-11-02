@@ -192,6 +192,8 @@ export interface MediaItem extends Synced {
   /** 1–5 */
   rating: number | null
   notes: string
+  /** The year a film came out, for films brought in from Letterboxd. */
+  year?: number | null
 }
 
 export interface Material {

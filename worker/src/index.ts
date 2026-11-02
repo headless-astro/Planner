@@ -2,6 +2,7 @@
 // database. GitHub Pages serves the app; this keeps the synced copy and sends the reminders.
 import { claim, isClaimed, requireKey } from './auth'
 import { CORS_HEADERS, HttpError, json, readJson, type Env } from './http'
+import { readDiary } from './letterboxd'
 import { sendTest, subscribe, unsubscribe, vapidKeys } from './push'
 import { runReminders } from './reminders'
 import { sync } from './sync'
@@ -33,6 +34,8 @@ async function route(request: Request, env: Env): Promise<Response> {
       return json({ subscribed: false })
     case 'POST /push/test':
       return json({ result: await sendTest(env, await readJson(request)) })
+    case 'POST /letterboxd':
+      return json(await readDiary(await readJson(request)))
   }
   throw new HttpError(404, 'Not found.')
 }

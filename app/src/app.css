@@ -1610,3 +1610,39 @@ table.numbers th[scope='row'] {
   flex-direction: row;
   align-items: center;
 }
+
+/* Books, games and shows: sub-tabs, the add form, Letterboxd */
+
+.media-subtabs {
+  margin-top: 12px;
+}
+
+.add-media {
+  margin-top: 0;
+  padding: 12px 14px;
+}
+
+.add-media > .button {
+  align-self: flex-start;
+}
+
+.letterboxd {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.letterboxd p {
+  margin: 0;
+}
+
+.file-button {
+  cursor: pointer;
+}
+
+.file-button:focus-within .button {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}

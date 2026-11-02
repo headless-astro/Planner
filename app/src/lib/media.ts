@@ -8,6 +8,8 @@ export interface MediaKindInfo {
   /** The screen: #/books, #/games or #/shows. */
   screen: 'books' | 'games' | 'shows'
   title: string
+  /** The sub-tab with what you're on now and what you finished. */
+  log: string
   /** "book", as in "Add a book". */
   one: string
   active: string
@@ -17,9 +19,9 @@ export interface MediaKindInfo {
 }
 
 export const MEDIA_KINDS: Record<MediaKind, MediaKindInfo> = {
-  book: { screen: 'books', title: 'Books', one: 'book', active: 'Reading now', want: 'Want to read', tick: 'read' },
-  game: { screen: 'games', title: 'Games', one: 'game', active: 'Playing now', want: 'Want to play', tick: null },
-  watch: { screen: 'shows', title: 'Movies & shows', one: 'movie or show', active: 'Watching now', want: 'Want to watch', tick: 'movie' },
+  book: { screen: 'books', title: 'Books', log: 'Reading', one: 'book', active: 'Reading now', want: 'Want to read', tick: 'read' },
+  game: { screen: 'games', title: 'Games', log: 'Playing', one: 'game', active: 'Playing now', want: 'Want to play', tick: null },
+  watch: { screen: 'shows', title: 'Movies & shows', log: 'Watching', one: 'movie or show', active: 'Watching now', want: 'Want to watch', tick: 'movie' },
 }
 
 export async function listMedia(kind: MediaKind): Promise<MediaItem[]> {
@@ -31,14 +33,32 @@ async function tickFinished(kind: MediaKind, date: string): Promise<void> {
   if (tick) await setEntry(date, `tick:${tick}`, true)
 }
 
-/** Adds a title you're starting, want to get to, or finished today. */
+export interface NewMediaFields {
+  author?: string
+  format?: 'movie' | 'show'
+  /** When you started; `date` when left out. */
+  started?: string
+  /** When you finished, for a finished one; `date` when left out. */
+  finished?: string
+  rating?: number | null
+}
+
+/**
+ * Adds a title you're on now, want to get to, or finished. Dates can be in the past, for
+ * filling in what you did before: finishing still ticks Read or Movie/Show on the day it was
+ * finished.
+ */
 export async function addMedia(
   kind: MediaKind,
   title: string,
   status: 'active' | 'want' | 'done',
   date: string,
-  fields: { author?: string; format?: 'movie' | 'show' } = {},
+  fields: NewMediaFields = {},
 ): Promise<void> {
+  const finished = status === 'done' ? (fields.finished ?? date) : null
+  // A start after the finish can only be a slip; the finish day is used instead.
+  const startedOn = fields.started ?? (status === 'done' ? (fields.finished ?? date) : date)
+  const started = status === 'want' ? null : finished && startedOn > finished ? finished : startedOn
   await db.media.put({
     id: newId(),
     kind,
@@ -47,13 +67,13 @@ export async function addMedia(
     format: kind === 'watch' ? (fields.format ?? 'movie') : null,
     genre: '',
     status,
-    started: status === 'want' ? null : date,
-    finished: status === 'done' ? date : null,
-    rating: null,
+    started,
+    finished,
+    rating: status === 'done' ? (fields.rating ?? null) : null,
     notes: '',
     updatedAt: now(),
   })
-  if (status === 'done') await tickFinished(kind, date)
+  if (finished) await tickFinished(kind, finished)
 }
 
 export const startMedia = (id: string, date: string) => update(db.media, id, { status: 'active', started: date })

@@ -15,8 +15,9 @@
     type MediaChanges,
     type MediaKindInfo,
   } from '../lib/media'
+  import { checkLetterboxd, getLetterboxd, importExport, profileLink, type MergeResult } from '../lib/letterboxd'
 
-  let { kind, today }: { kind: MediaKind; today: string } = $props()
+  let { kind, today, want = false }: { kind: MediaKind; today: string; want?: boolean } = $props()
 
   const KINDS = Object.entries(MEDIA_KINDS) as [MediaKind, MediaKindInfo][]
   const RATINGS = [1, 2, 3, 4, 5]
@@ -34,7 +35,36 @@
   let newTitle = $state('')
   let newAuthor = $state('')
   let newFormat = $state<'movie' | 'show'>('movie')
-  let newStatus = $state<'active' | 'want' | 'done'>('active')
+  let newStatus = $state<'active' | 'done'>('active')
+  // Empty dates mean today.
+  let newStarted = $state('')
+  let newFinished = $state('')
+  let newRating = $state<number | null>(null)
+
+  // Letterboxd, on Movies & shows.
+  const letterboxd = live(() => getLetterboxd, { username: '' })
+  let letterboxdMessage = $state<string | null>(null)
+  let letterboxdBusy = $state(false)
+
+  const summary = (result: MergeResult) => (result.added || result.updated ? `Done: ${result.added} added, ${result.updated} updated.` : 'Done: nothing new.')
+
+  async function runLetterboxd(task: () => Promise<MergeResult>) {
+    letterboxdBusy = true
+    letterboxdMessage = null
+    try {
+      letterboxdMessage = summary(await task())
+    } catch (error) {
+      letterboxdMessage = error instanceof Error ? error.message : String(error)
+    } finally {
+      letterboxdBusy = false
+    }
+  }
+
+  function chooseExport(event: Event & { currentTarget: HTMLInputElement }) {
+    const files = [...(event.currentTarget.files ?? [])]
+    event.currentTarget.value = ''
+    if (files.length) void runLetterboxd(() => importExport(files))
+  }
 
   const day = (iso: string) => formatDate(parseDate(iso))
   const statusLabel = (status: MediaStatus) => ({ active: info.active, want: info.want, done: 'Finished', stopped: 'Stopped' })[status]
@@ -66,9 +96,18 @@
     event.preventDefault()
     const title = newTitle.trim()
     if (!title) return
-    await addMedia(kind, title, newStatus, today, { author: newAuthor.trim(), format: newFormat })
+    await addMedia(kind, title, want ? 'want' : newStatus, today, {
+      author: newAuthor.trim(),
+      format: newFormat,
+      started: newStarted || today,
+      finished: newFinished || today,
+      rating: newRating,
+    })
     newTitle = ''
     newAuthor = ''
+    newStarted = ''
+    newFinished = ''
+    newRating = null
   }
 </script>
 
@@ -164,65 +203,122 @@
 
 <header>
   <h1>{info.title}</h1>
-  <p class="date">Add a title when you start it, and rate it when you finish.</p>
+  <p class="date">{want ? `What you'd like to get to. Start one and it moves to ${info.log}.` : 'What you’re on now, and everything you finished.'}</p>
 </header>
 
 <nav class="chips list-tabs" aria-label="Books, games, movies and shows">
   {#each KINDS as [key, value] (key)}
-    <a class="chip" href="#/{value.screen}" aria-current={key === kind ? 'page' : undefined}>{value.title}</a>
+    <a class="chip" href="#/{value.screen}{want ? '/want' : ''}" aria-current={key === kind ? 'page' : undefined}>{value.title}</a>
   {/each}
 </nav>
 
+<nav class="subtabs media-subtabs" aria-label="{info.log} and {info.want}">
+  <a href="#/{info.screen}" aria-current={want ? undefined : 'page'}>{info.log}</a>
+  <a href="#/{info.screen}/want" aria-current={want ? 'page' : undefined}>{info.want}</a>
+</nav>
+
 <section>
-  <h2>Add a {info.one}</h2>
-  <form class="add-row" onsubmit={submit}>
-    <input class="grow" type="text" bind:value={newTitle} placeholder="Title" aria-label="New {info.one}" />
+  <h2>{want ? `Add to ${info.want.toLowerCase()}` : `Add a ${info.one}`}</h2>
+  <form class="card edit-panel add-media" onsubmit={submit}>
+    <input type="text" bind:value={newTitle} placeholder="Title" aria-label="New {info.one}" />
     {#if kind === 'book'}
-      <input class="grow" type="text" bind:value={newAuthor} placeholder="Author (optional)" aria-label="Author" />
+      <input type="text" bind:value={newAuthor} placeholder="Author (optional)" aria-label="Author" />
     {:else if kind === 'watch'}
       <select bind:value={newFormat} aria-label="Movie or show">
         <option value="movie">Movie</option>
         <option value="show">Show</option>
       </select>
     {/if}
-    <select bind:value={newStatus} aria-label="Status">
-      <option value="active">{info.active}</option>
-      <option value="want">{info.want}</option>
-      <option value="done">Finished today</option>
-    </select>
+    {#if !want}
+      <div class="seg" role="group" aria-label="Status">
+        <button type="button" aria-pressed={newStatus === 'active'} onclick={() => (newStatus = 'active')}>{info.active}</button>
+        <button type="button" aria-pressed={newStatus === 'done'} onclick={() => (newStatus = 'done')}>Finished</button>
+      </div>
+      <label>
+        Started
+        <input type="date" max={today} value={newStarted || today} oninput={(event) => (newStarted = event.currentTarget.value)} />
+      </label>
+      {#if newStatus === 'done'}
+        <label>
+          Finished
+          <input type="date" max={today} value={newFinished || today} oninput={(event) => (newFinished = event.currentTarget.value)} />
+        </label>
+        <div class="field">
+          <span class="field-label" id="new-rating">Rating</span>
+          <div class="seg" role="group" aria-labelledby="new-rating">
+            {#each RATINGS as value (value)}
+              <button type="button" aria-label="{value} of 5" aria-pressed={newRating === value} onclick={() => (newRating = newRating === value ? null : value)}
+                >{value}</button
+              >
+            {/each}
+          </div>
+        </div>
+      {/if}
+    {/if}
     <button type="submit" class="button">Add</button>
   </form>
-  {#if info.tick}
-    <p class="muted small">Finishing one also ticks {info.tick === 'read' ? 'Read' : 'Movie/Show'} for the day.</p>
+  {#if info.tick && !want}
+    <p class="muted small">Finishing one ticks {info.tick === 'read' ? 'Read' : 'Movie/Show'} on the day you finished it, past days too.</p>
   {/if}
 </section>
 
-{#if groups.active.length}
-  <section>
-    <h2>{info.active}</h2>
-    <ul class="list">
-      {#each groups.active as item (item.id)}{@render itemRow(item)}{/each}
-    </ul>
-  </section>
-{/if}
-
-{#if groups.want.length}
+{#if want}
   <section>
     <h2>{info.want}</h2>
-    <ul class="list">
-      {#each groups.want as item (item.id)}{@render itemRow(item)}{/each}
-    </ul>
+    {#if groups.want.length}
+      <ul class="list">
+        {#each groups.want as item (item.id)}{@render itemRow(item)}{/each}
+      </ul>
+    {:else}
+      <p class="muted small">Nothing here yet.</p>
+    {/if}
+  </section>
+{:else}
+  {#if groups.active.length}
+    <section>
+      <h2>{info.active}</h2>
+      <ul class="list">
+        {#each groups.active as item (item.id)}{@render itemRow(item)}{/each}
+      </ul>
+    </section>
+  {/if}
+
+  <section>
+    <h2>Finished</h2>
+    {#if groups.finished.length}
+      <p class="muted small">{finishedThisYear} finished in {year}.</p>
+      <ul class="list">
+        {#each groups.finished as item (item.id)}{@render itemRow(item)}{/each}
+      </ul>
+    {:else}
+      <p class="muted small">Nothing finished yet.</p>
+    {/if}
   </section>
 {/if}
 
-<section>
-  <h2>Finished</h2>
-  {#if groups.finished.length}
-    <p class="muted small">{finishedThisYear} finished in {year}.</p>
-    <ul class="list">
-      {#each groups.finished as item (item.id)}{@render itemRow(item)}{/each}
-    </ul>
-  {:else}
-    <p class="muted small">Nothing finished yet.</p>
-  {/if}
-</section>
+{#if kind === 'watch'}
+  <section>
+    <h2>Letterboxd</h2>
+    <div class="card letterboxd">
+      {#if letterboxd.current.username}
+        <p class="small">
+          <a href={profileLink(letterboxd.current.username)} target="_blank" rel="noopener noreferrer">Open your Letterboxd</a>
+          · <a href="{profileLink(letterboxd.current.username)}watchlist/" target="_blank" rel="noopener noreferrer">Watchlist</a>
+        </p>
+        <button type="button" class="button small" disabled={letterboxdBusy} onclick={() => runLetterboxd(checkLetterboxd)}>Check Letterboxd</button>
+        <p class="muted small">Brings in films from your Letterboxd diary (the latest 50) with the day you watched them and your rating. Only when you tap it.</p>
+      {:else}
+        <p class="small">Add your Letterboxd username in <a href="#/setup">Settings → Setup</a> to link it here and check it for new films.</p>
+      {/if}
+      <label class="file-button">
+        <span class="button small secondary">Import a Letterboxd export</span>
+        <input class="visually-hidden" type="file" accept=".zip,.csv" multiple disabled={letterboxdBusy} onchange={chooseExport} />
+      </label>
+      <p class="muted small">
+        On letterboxd.com: Settings → Import &amp; Export → Export your data, then choose the .zip here. Your diary, everything you've watched, your ratings and your
+        watchlist come in. Films already here are updated, not doubled.
+      </p>
+      {#if letterboxdMessage}<p class="small" role="status">{letterboxdMessage}</p>{/if}
+    </div>
+  </section>
+{/if}

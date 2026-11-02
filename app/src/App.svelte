@@ -15,7 +15,6 @@
   import Lists from './routes/Lists.svelte'
   import Me from './routes/Me.svelte'
   import Media from './routes/Media.svelte'
-  import More from './routes/More.svelte'
   import Plans from './routes/Plans.svelte'
   import Recipes from './routes/Recipes.svelte'
   import Review from './routes/Review.svelte'
@@ -37,7 +36,6 @@
     'lists',
     'routines',
     'history',
-    'more',
     'me',
     'settings',
     'week',
@@ -59,7 +57,7 @@
   ] as const
   type Screen = (typeof SCREENS)[number]
   type Route =
-    | { name: Screen }
+    | { name: Screen; want?: boolean }
     | { name: 'day'; date: string }
     | { name: 'topic'; number: number }
     | { name: 'review-week'; monday: string }
@@ -68,12 +66,13 @@
   type Tab = 'today' | 'plans' | 'routines' | 'history' | 'more' | 'me' | 'settings'
 
   // Seven icon tabs with small labels (F32).
-  const tabs: { name: Tab; label: string; icon: IconName }[] = [
+  const tabs: { name: Tab; label: string; icon: IconName; href?: string }[] = [
     { name: 'today', label: 'Today', icon: 'calendar-heart' },
     { name: 'plans', label: 'Plans', icon: 'list-checks' },
     { name: 'routines', label: 'Routines', icon: 'clock-countdown' },
     { name: 'history', label: 'History', icon: 'clock-counter-clockwise' },
-    { name: 'more', label: 'More', icon: 'plus-circle' },
+    // More opens on Books, which links to Games and Movies & shows.
+    { name: 'more', label: 'More', icon: 'plus-circle', href: '#/books' },
     { name: 'me', label: 'Me', icon: 'user' },
     { name: 'settings', label: 'Settings', icon: 'gear' },
   ]
@@ -117,7 +116,9 @@
     if (name === 'link') return { name: 'link', payload: argument ?? '' }
     // Projects moved into Lists in M7.
     if (name === 'projects') return { name: 'lists' }
+    if (name === 'more') return { name: 'books' }
     const screen = SCREENS.find((candidate) => candidate === name)
+    if (screen === 'books' || screen === 'games' || screen === 'shows') return { name: screen, want: argument === 'want' }
     return { name: screen ?? 'today' }
   }
 
@@ -213,8 +214,6 @@
     <Routines {today} />
   {:else if route.name === 'history'}
     <History {today} />
-  {:else if route.name === 'more'}
-    <More />
   {:else if route.name === 'me'}
     <Me {today} />
   {:else if route.name === 'settings'}
@@ -241,8 +240,9 @@
     <Drawing {today} />
   {:else if route.name === 'books' || route.name === 'games' || route.name === 'shows'}
     {@const kind = MEDIA_SCREENS[route.name]}
-    {#key kind}
-      <Media {kind} {today} />
+    {@const want = !!route.want}
+    {#key `${kind}|${want}`}
+      <Media {kind} {today} {want} />
     {/key}
   {:else if route.name === 'goals'}
     <Goals {today} />
@@ -259,7 +259,7 @@
 
 <nav class="tabs" aria-label="Screens">
   {#each tabs as tab (tab.name)}
-    <a href="#/{tab.name}" aria-current={activeTab === tab.name ? 'page' : undefined}>
+    <a href={tab.href ?? `#/${tab.name}`} aria-current={activeTab === tab.name ? 'page' : undefined}>
       <Icon name={tab.icon} />
       <span class="tab-label">{tab.label}</span>
     </a>

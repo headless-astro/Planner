@@ -329,8 +329,8 @@ describe('Books, games and shows', () => {
     const input = document.querySelector('input[aria-label="New book"]')
     type(input, 'Dune')
     submit(input)
-    await vi.waitFor(() => expect(buttonByText('Finished')).toBeTruthy())
-    click(buttonByText('Finished'))
+    await vi.waitFor(() => expect(document.querySelector('.list .button')?.textContent).toBe('Finished'))
+    click(document.querySelector('.list .button'))
     await vi.waitFor(async () => expect((await db.entries.get('2026-11-02|tick:read'))?.value).toBe(true))
     await vi.waitFor(() => expect(text()).toContain('How was it?'))
     click(document.querySelector('.rate button[aria-label="4 of 5"]'))
@@ -342,6 +342,38 @@ describe('Books, games and shows', () => {
     go('#/shows')
     await vi.waitFor(() => expect(heading()).toBe('Movies & shows'))
     expect(document.querySelector('a[aria-current="page"].chip')?.textContent).toBe('Movies & shows')
+  })
+
+  it('the More tab opens on Books', async () => {
+    await open('#/today')
+    expect(document.querySelector('.tabs a[href="#/books"]')?.textContent?.trim()).toBe('More')
+    go('#/more')
+    await vi.waitFor(() => expect(heading()).toBe('Books'))
+  })
+
+  it('adds a movie watched in the past with its dates and rating in one go', async () => {
+    await open('#/shows')
+    type(document.querySelector('input[aria-label="New movie or show"]'), 'Paterson')
+    click([...document.querySelectorAll('.add-media .seg button')].find((button) => button.textContent === 'Finished'))
+    await vi.waitFor(() => expect(document.querySelectorAll('.add-media input[type="date"]')).toHaveLength(2))
+    for (const field of document.querySelectorAll('.add-media input[type="date"]')) type(field, '2026-09-12')
+    click(document.querySelector('.add-media button[aria-label="5 of 5"]'))
+    submit(document.querySelector('input[aria-label="New movie or show"]'))
+    await vi.waitFor(async () =>
+      expect((await listMedia('watch'))[0]).toMatchObject({ title: 'Paterson', started: '2026-09-12', finished: '2026-09-12', rating: 5 }),
+    )
+    expect((await db.entries.get('2026-09-12|tick:movie'))?.value).toBe(true)
+  })
+
+  it('keeps the want-to list on its own sub-tab', async () => {
+    await open('#/games/want')
+    await vi.waitFor(() => expect(document.querySelector('.subtabs a[aria-current="page"]')?.textContent).toBe('Want to play'))
+    type(document.querySelector('input[aria-label="New game"]'), 'Hollow Knight')
+    submit(document.querySelector('input[aria-label="New game"]'))
+    await vi.waitFor(() => expect(text()).toContain('Hollow Knight'))
+    go('#/games')
+    await vi.waitFor(() => expect(document.querySelector('.subtabs a[aria-current="page"]')?.textContent).toBe('Playing'))
+    expect(text()).not.toContain('Hollow Knight')
   })
 })
 

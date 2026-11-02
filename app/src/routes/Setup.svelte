@@ -40,6 +40,7 @@
     type TimeOfDay,
   } from '../lib/setup'
   import { textLines } from '../lib/text'
+  import { getLetterboxd, setLetterboxdUsername } from '../lib/letterboxd'
 
   const doses = live(() => listDoses, [] as Dose[])
   const habits = live(() => listHabits, [] as Habit[])
@@ -48,6 +49,7 @@
   const reminders = live(() => getReminders, DEFAULT_REMINDERS)
   const lastExport = live(() => () => getMeta<number>('lastExport'), undefined as number | undefined)
   const appearance = live(() => getAppearance, DEFAULT_APPEARANCE)
+  const letterboxd = live(() => getLetterboxd, { username: '' })
   const foodRules = live(() => getFoodRules, DEFAULT_FOOD_RULES)
 
   const TIMES: { value: TimeOfDay; label: string }[] = [
@@ -338,6 +340,23 @@
     />
   </div>
   <p class="muted small">Turn them on for each device under <a href="#/sync">Sync and reminders</a>.</p>
+</section>
+
+<section>
+  <h2>Letterboxd</h2>
+  <div class="card targets">
+    <label for="letterboxd-username">Username</label>
+    <input
+      id="letterboxd-username"
+      type="text"
+      autocapitalize="off"
+      spellcheck="false"
+      value={letterboxd.current.username}
+      placeholder="Your Letterboxd name"
+      onchange={(event) => setLetterboxdUsername(event.currentTarget.value)}
+    />
+  </div>
+  <p class="muted small">For the Letterboxd link and the "Check Letterboxd" button on <a href="#/shows">Movies & shows</a>.</p>
 </section>
 
 <section>

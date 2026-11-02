@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import worker from '../src/index'
+import { parseDiary } from '../src/letterboxd'
 import { dueReminders, localClock } from '../src/reminders'
 import { fakeD1 } from './fake-d1'
 
@@ -218,5 +219,41 @@ describe('reminder times', () => {
     expect(dueReminders({ morning: '12:00', night: '23:50' }, { date: '2026-11-03', minutes: 10 })).toEqual([{ kind: 'night', day: '2026-11-02' }])
     expect(dueReminders({ morning: '12:00', night: '00:00' }, { date: '2026-11-03', minutes: 3 })).toEqual([{ kind: 'night', day: '2026-11-03' }])
     expect(dueReminders({ morning: '12:00', night: '00:00' }, { date: '2026-11-03', minutes: 12 * 60 + 40 })).toEqual([])
+  })
+})
+
+describe('Letterboxd', () => {
+  const FEED = `<?xml version="1.0"?><rss><channel>
+    <item><title>Past Lives, 2023 - ★★★★½</title>
+      <letterboxd:watchedDate>2026-10-30</letterboxd:watchedDate><letterboxd:rewatch>No</letterboxd:rewatch>
+      <letterboxd:filmTitle>Past Lives</letterboxd:filmTitle><letterboxd:filmYear>2023</letterboxd:filmYear>
+      <letterboxd:memberRating>4.5</letterboxd:memberRating></item>
+    <item><title>Tom &amp; Jerry</title><letterboxd:filmTitle><![CDATA[Tom & Jerry]]></letterboxd:filmTitle>
+      <letterboxd:watchedDate>2026-10-01</letterboxd:watchedDate><letterboxd:rewatch>Yes</letterboxd:rewatch></item>
+    <item><title>A list</title><description>Not a film</description></item>
+  </channel></rss>`
+
+  it('reads the films from a diary feed', () => {
+    expect(parseDiary(FEED)).toEqual([
+      { title: 'Past Lives', year: 2023, watched: '2026-10-30', rating: 4.5, rewatch: false },
+      { title: 'Tom & Jerry', year: null, watched: '2026-10-01', rating: null, rewatch: true },
+    ])
+  })
+
+  it('fetches the feed only for a valid username, with the key', async () => {
+    await call('POST', '/claim', { key: KEY })
+    const fetchMock = vi.fn(async () => new Response(FEED, { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      expect((await call('POST', '/letterboxd', { body: { username: 'someone' } })).status).toBe(401)
+      expect((await call('POST', '/letterboxd', { key: KEY, body: { username: '../x' } })).status).toBe(400)
+      const answer = await call('POST', '/letterboxd', { key: KEY, body: { username: 'someone' } })
+      expect(answer.status).toBe(200)
+      expect(answer.body.entries).toHaveLength(2)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe('https://letterboxd.com/someone/rss/')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
