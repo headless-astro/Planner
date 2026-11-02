@@ -92,6 +92,7 @@ describe('Today', () => {
 
   it('adds snacks against the 200 kcal budget', async () => {
     await open()
+    await vi.waitFor(() => expect(buttonByText('Add snack')).toBeTruthy())
     click(buttonByText('Add snack'))
     await vi.waitFor(() => expect(buttonByText('10 almonds')).toBeTruthy())
     click(buttonByText('10 almonds'))
@@ -102,6 +103,7 @@ describe('Today', () => {
 
   it('adds a to-do', async () => {
     await open()
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="New to-do"]')).toBeTruthy())
     const input = document.querySelector('input[aria-label="New to-do"]')
     type(input, 'finish shaders')
     submit(input)
@@ -110,6 +112,7 @@ describe('Today', () => {
 
   it('saves the food diary as you type', async () => {
     await open()
+    await vi.waitFor(() => expect(document.querySelector('textarea[placeholder="Roughly what you ate today"]')).toBeTruthy())
     type(document.querySelector('textarea[placeholder="Roughly what you ate today"]'), 'lentil soup, yogurt')
     await vi.waitFor(async () => expect((await db.entries.get('2026-11-02|diary'))?.value).toBe('lentil soup, yogurt'))
   })
@@ -342,27 +345,105 @@ describe('Books, games and shows', () => {
   })
 })
 
-describe('Craft projects', () => {
-  it('a material you still need shows on the shopping list', async () => {
+describe('Projects in Lists', () => {
+  it('the craft projects are tasks in the Projects list, with notes and a link', async () => {
+    await open('#/lists')
+    await vi.waitFor(() => expect(buttonByText('Projects')).toBeTruthy())
+    click(buttonByText('Projects'))
+    await vi.waitFor(() => expect(text()).toContain('Heart Bag'))
+    expect(text()).toContain('Kind: Crochet')
+    const notes = document.querySelector('textarea')
+    if (!(notes instanceof HTMLTextAreaElement)) throw new Error('notes not found')
+    notes.value = 'Kind: Crochet\nGreen yarn, safety eyes'
+    notes.dispatchEvent(new Event('change', { bubbles: true }))
+    await vi.waitFor(async () => expect((await db.tasks.get('task-project-frog'))?.notes).toBe('Kind: Crochet\nGreen yarn, safety eyes'))
+    await vi.waitFor(() => expect(text()).toContain('Green yarn, safety eyes'))
+  })
+
+  it('the old Projects link opens Lists', async () => {
     await open('#/projects')
-    await vi.waitFor(() => expect(document.querySelector('input[aria-label="New material for Frog"]')).toBeTruthy())
-    const input = document.querySelector('input[aria-label="New material for Frog"]')
-    type(input, 'Green yarn')
-    submit(input)
-    await vi.waitFor(() => expect(text()).toContain('Green yarn'))
-    go('#/shopping')
-    await vi.waitFor(() => expect(text()).toContain('For projects'))
-    expect(text()).toContain('Green yarn')
+    await vi.waitFor(() => expect(heading()).toBe('Lists'))
   })
 })
 
-describe('Goals', () => {
-  it('shows the goal tree with progress lines', async () => {
-    await open('#/goals')
-    await vi.waitFor(() => expect(text()).toContain('Improve technical knowledge'))
+describe('Tabs', () => {
+  it('has seven tabs, each an icon with a label, and keeps the right one lit', async () => {
+    await open('#/today')
+    const labels = [...document.querySelectorAll('.tabs a')].map((tab) => tab.textContent?.trim())
+    expect(labels).toEqual(['Today', 'Plans', 'Routines', 'History', 'More', 'Me', 'Settings'])
+    expect(document.querySelectorAll('.tabs a svg')).toHaveLength(7)
+    const lit = () => document.querySelector('.tabs a[aria-current="page"]')?.textContent?.trim()
+    go('#/spanish')
+    await vi.waitFor(() => expect(lit()).toBe('Plans'))
+    go('#/review')
+    await vi.waitFor(() => expect(lit()).toBe('History'))
+    go('#/shopping')
+    await vi.waitFor(() => expect(lit()).toBe('Me'))
+    go('#/stats')
+    await vi.waitFor(() => expect(lit()).toBe('Settings'))
+  })
+})
+
+describe('Plans', () => {
+  it('sums up each plan, with links to the full pages', async () => {
+    await open('#/plans')
+    await vi.waitFor(() => expect(text()).toContain('Next: #1'))
+    expect(text()).toContain('Book: review session 1 of 2 · Tomorrow')
+    expect(text()).toContain('This week: Anatomy · Friday')
+    expect([...document.querySelectorAll('.plan-title')].map((link) => link.getAttribute('href'))).toEqual(
+      expect.arrayContaining(['#/week', '#/study', '#/spanish', '#/drawing', '#/tracks']),
+    )
+    click(document.querySelector('.subtabs a[href="#/lists"]'))
+    go('#/lists')
+    await vi.waitFor(() => expect(heading()).toBe('Lists'))
+  })
+})
+
+describe('Me', () => {
+  it('shows health, the exercise plan, goals and food', async () => {
+    await setMeasurement('2026-10-24', 'weight', 81.2)
+    await setMeasurement('2026-10-31', 'weight', 80.6)
+    await setEntry('2026-11-02', 'tick:workout', true)
+    await open('#/me')
+    await vi.waitFor(() => expect(text()).toContain('80.6 kg'))
+    expect(text()).toContain('−0.6 since Sat 24 Oct')
+    await vi.waitFor(() => expect(text()).toContain('1 of 6'))
+    expect(text()).toContain('Primer 2 · week 1 of 4')
     await vi.waitFor(() => expect(text()).toContain('0 of 37 tech topics done'))
-    click(buttonByText('Edit goals'))
+    expect(text()).toContain('Recipes')
+    expect(document.querySelector('input')).toBeNull()
+    go('#/exercise')
+    await vi.waitFor(() => expect(heading()).toBe('Exercise plan'))
+    expect(text()).toContain('Push-up on handles, knees down')
+  })
+})
+
+describe('Settings', () => {
+  it('leads to setup, goals, stats and sync', async () => {
+    await open('#/settings')
+    const links = [...document.querySelectorAll('.more-list a')].map((link) => link.getAttribute('href'))
+    expect(links).toEqual(expect.arrayContaining(['#/setup', '#/goals', '#/stats', '#/sync']))
+    go('#/goals')
     await vi.waitFor(() => expect(document.querySelector('input[aria-label="New goal"]')).toBeTruthy())
+  })
+})
+
+describe('Weekly reviews in History', () => {
+  it('lists the weeks, each opening its review', async () => {
+    await setEntry('2026-10-26', 'review', 'A good week')
+    await open('#/history')
+    await vi.waitFor(() => expect(text()).toContain('notes written'))
+    const link = document.querySelector('a[href="#/review/2026-10-26"]')
+    expect(link?.textContent).toContain('Week of Mon 26 Oct')
+    go('#/review/2026-10-26')
+    await vi.waitFor(() => expect(text()).toContain('The week in numbers'))
+  })
+
+  it('Today offers the review on Sundays', async () => {
+    vi.setSystemTime(new Date(2026, 10, 8, 12, 0))
+    await open()
+    await vi.waitFor(() => expect(heading()).toBe('Sunday'))
+    await vi.waitFor(() => expect(document.querySelector('.review-cta a')?.getAttribute('href')).toBe('#/review'))
   })
 })
 

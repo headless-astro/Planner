@@ -1,6 +1,8 @@
 <script lang="ts">
+  import PlansNav from '../components/PlansNav.svelte'
   import { formatShort, parseDate } from '../lib/dates'
   import type { TaskList } from '../lib/db'
+  import { linkParts, safeLink } from '../lib/links'
   import { live } from '../lib/live.svelte'
   import {
     addList,
@@ -70,9 +72,11 @@
   }
 </script>
 
+<PlansNav current="lists" />
+
 <header>
   <h1>Lists</h1>
-  <p class="date">Tasks with deadlines and subtasks. Done ones move to the archive.</p>
+  <p class="date">Tasks and projects, with deadlines, subtasks and notes. Done ones move to the archive.</p>
 </header>
 
 <div class="chips list-tabs">
@@ -109,6 +113,20 @@
                 {#if task.due}<span class="detail" class:late={task.due < today}>{dueLabel(task, today)}</span>{/if}
               </span>
             </label>
+            {#if task.notes || safeLink(task.link ?? '')}
+              <div class="task-notes">
+                {#if task.notes}
+                  <p class="small pre">
+                    {#each linkParts(task.notes) as part, index (index)}
+                      {#if part.href}<a href={part.href} target="_blank" rel="noopener noreferrer">{part.text}</a>{:else}{part.text}{/if}
+                    {/each}
+                  </p>
+                {/if}
+                {#if safeLink(task.link ?? '')}
+                  <a class="small" href={safeLink(task.link ?? '')} target="_blank" rel="noopener noreferrer">Open link</a>
+                {/if}
+              </div>
+            {/if}
             {#if task.subtasks.length}
               <ul class="subtasks">
                 {#each task.subtasks as subtask (subtask.id)}
@@ -141,6 +159,24 @@
                 <label>
                   Deadline
                   <input type="date" value={task.due ?? ''} onchange={(event) => updateTask(task.id, { due: event.currentTarget.value || null })} />
+                </label>
+                <label>
+                  Notes
+                  <textarea
+                    rows="3"
+                    value={task.notes ?? ''}
+                    placeholder="Anything to remember: steps, sizes, ideas…"
+                    onchange={(event) => updateTask(task.id, { notes: event.currentTarget.value.trim() })}
+                  ></textarea>
+                </label>
+                <label>
+                  Link
+                  <input
+                    type="url"
+                    value={task.link ?? ''}
+                    placeholder="https://…"
+                    onchange={(event) => updateTask(task.id, { link: event.currentTarget.value.trim() })}
+                  />
                 </label>
                 <form class="add-row" onsubmit={(event) => submitSubtask(event, task.id)}>
                   <input

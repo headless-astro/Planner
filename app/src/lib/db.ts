@@ -37,6 +37,9 @@ export interface Task extends Synced {
   done: boolean
   doneDate: string | null
   order: number
+  /** Notes and a link, for list tasks such as projects (F34). */
+  notes?: string
+  link?: string
 }
 
 export interface Measurement extends Synced {
@@ -197,6 +200,7 @@ export interface Material {
 }
 
 /** A craft project (PLAN.md 1.8, S19). */
+/** A craft project from M5. They became tasks in the Projects list in M7 (projects.ts). */
 export interface Project extends Synced {
   name: string
   kind: string

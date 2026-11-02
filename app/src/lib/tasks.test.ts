@@ -12,11 +12,12 @@ beforeEach(async () => {
 const titles = (tasks: { title: string }[]) => tasks.map((task) => task.title)
 
 describe('task lists', () => {
-  it('starts with Life, Work and Vela, with Vela kept off Today', async () => {
+  it('starts with Life, Work, Vela and Projects, with Vela kept off Today', async () => {
     expect((await listLists()).map((list) => [list.name, list.showOnToday])).toEqual([
       ['Life', true],
       ['Work', true],
       ['Vela', false],
+      ['Projects', true],
     ])
   })
 
@@ -58,12 +59,12 @@ describe('task lists', () => {
     const [trip] = (await getListTasks('list-life')).open
     await addTask('list-life', 'Pack', { parentId: trip.id })
     await deleteTask(trip.id)
-    expect(await db.tasks.filter((task) => !task.deleted).count()).toBe(0)
+    expect(await db.tasks.filter((task) => !task.deleted && task.listId === 'list-life').count()).toBe(0)
 
     const id = await addList('Errands')
     await addTask(id, 'Post office')
     await deleteList(id)
     expect((await listLists()).map((list) => list.name)).not.toContain('Errands')
-    expect(await db.tasks.filter((task) => !task.deleted).count()).toBe(0)
+    expect(await db.tasks.filter((task) => !task.deleted && task.listId === id).count()).toBe(0)
   })
 })

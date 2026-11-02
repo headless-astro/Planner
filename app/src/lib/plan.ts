@@ -122,9 +122,12 @@ function morningBlock(template: DayTemplate, date: Date, setup: DaySetup): PlanI
   }
 }
 
+/** The week of Primer 2 a date is in: 1–4 while it runs, below 1 before, above 4 after. */
+export const primerWeek = (date: Date) => weekSince(parseDate(PRIMER_START), date)
+
 function workout(template: DayTemplate, date: Date): PlanItem | null {
   if (template.workout === 'rest') return null
-  const week = weekSince(parseDate(PRIMER_START), date)
+  const week = primerWeek(date)
   if (week < 1) return null
   if (week > PRIMER_WEEKS) {
     return { id: 'workout', label: 'Workout', detail: 'Primer 2 is finished; the next block isn’t set yet' }

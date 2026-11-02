@@ -5,18 +5,22 @@
   import { ensureSeeded, getAppearance } from './lib/repo'
   import { DEFAULT_APPEARANCE } from './lib/setup'
   import { getSyncConfig, startSync } from './lib/sync'
+  import Icon, { type IconName } from './components/Icon.svelte'
   import Day from './routes/Day.svelte'
   import Drawing from './routes/Drawing.svelte'
+  import Exercise from './routes/Exercise.svelte'
   import Goals from './routes/Goals.svelte'
   import History from './routes/History.svelte'
   import Link from './routes/Link.svelte'
   import Lists from './routes/Lists.svelte'
+  import Me from './routes/Me.svelte'
   import Media from './routes/Media.svelte'
   import More from './routes/More.svelte'
-  import Projects from './routes/Projects.svelte'
+  import Plans from './routes/Plans.svelte'
   import Recipes from './routes/Recipes.svelte'
   import Review from './routes/Review.svelte'
   import Routines from './routes/Routines.svelte'
+  import Settings from './routes/Settings.svelte'
   import Setup from './routes/Setup.svelte'
   import Shopping from './routes/Shopping.svelte'
   import Spanish from './routes/Spanish.svelte'
@@ -29,10 +33,13 @@
 
   const SCREENS = [
     'today',
+    'plans',
     'lists',
     'routines',
     'history',
     'more',
+    'me',
+    'settings',
     'week',
     'shopping',
     'tracks',
@@ -46,7 +53,7 @@
     'books',
     'games',
     'shows',
-    'projects',
+    'exercise',
     'goals',
     'sync',
   ] as const
@@ -58,36 +65,43 @@
     | { name: 'review-week'; monday: string }
     | { name: 'link'; payload: string }
 
-  const tabs: { name: Screen; label: string }[] = [
-    { name: 'today', label: 'Today' },
-    { name: 'lists', label: 'Lists' },
-    { name: 'routines', label: 'Routines' },
-    { name: 'history', label: 'History' },
-    { name: 'more', label: 'More' },
+  type Tab = 'today' | 'plans' | 'routines' | 'history' | 'more' | 'me' | 'settings'
+
+  // Seven icon tabs with small labels (F32).
+  const tabs: { name: Tab; label: string; icon: IconName }[] = [
+    { name: 'today', label: 'Today', icon: 'calendar-heart' },
+    { name: 'plans', label: 'Plans', icon: 'list-checks' },
+    { name: 'routines', label: 'Routines', icon: 'clock-countdown' },
+    { name: 'history', label: 'History', icon: 'clock-counter-clockwise' },
+    { name: 'more', label: 'More', icon: 'plus-circle' },
+    { name: 'me', label: 'Me', icon: 'user' },
+    { name: 'settings', label: 'Settings', icon: 'gear' },
   ]
 
-  /** Screens reached from "More" keep that tab highlighted. */
-  const UNDER_MORE: string[] = [
-    'week',
-    'shopping',
-    'tracks',
-    'setup',
-    'study',
-    'topic',
-    'spanish',
-    'recipes',
-    'review',
-    'review-week',
-    'stats',
-    'drawing',
-    'books',
-    'games',
-    'shows',
-    'projects',
-    'goals',
-    'sync',
-    'link',
-  ]
+  /** Which tab stays highlighted on the screens inside it. */
+  const TAB_OF: Partial<Record<Route['name'], Tab>> = {
+    lists: 'plans',
+    week: 'plans',
+    study: 'plans',
+    topic: 'plans',
+    spanish: 'plans',
+    drawing: 'plans',
+    tracks: 'plans',
+    day: 'history',
+    review: 'history',
+    'review-week': 'history',
+    books: 'more',
+    games: 'more',
+    shows: 'more',
+    exercise: 'me',
+    recipes: 'me',
+    shopping: 'me',
+    setup: 'settings',
+    goals: 'settings',
+    stats: 'settings',
+    sync: 'settings',
+    link: 'settings',
+  }
 
   /** The three media screens share one component. */
   const MEDIA_SCREENS = { books: 'book', games: 'game', shows: 'watch' } as const
@@ -101,6 +115,8 @@
     if (name === 'study' && argument && /^\d+$/.test(argument)) return { name: 'topic', number: Number(argument) }
     if (name === 'review' && isDate(argument)) return { name: 'review-week', monday: toISODate(weekStart(parseDate(argument))) }
     if (name === 'link') return { name: 'link', payload: argument ?? '' }
+    // Projects moved into Lists in M7.
+    if (name === 'projects') return { name: 'lists' }
     const screen = SCREENS.find((candidate) => candidate === name)
     return { name: screen ?? 'today' }
   }
@@ -111,7 +127,7 @@
   let failure = $state<string | null>(null)
 
   const thisMonday = $derived(toISODate(weekStart(parseDate(today))))
-  const activeTab = $derived(route.name === 'day' ? 'history' : UNDER_MORE.includes(route.name) ? 'more' : route.name)
+  const activeTab = $derived<Tab>(TAB_OF[route.name] ?? (tabs.some((tab) => tab.name === route.name) ? (route.name as Tab) : 'today'))
 
   // Colours (F28). The palette is also kept on the device, so index.html can apply it before
   // the data loads, and the browser's bar takes the page colour.
@@ -189,6 +205,8 @@
     {#key monday}
       <Review {monday} {today} />
     {/key}
+  {:else if route.name === 'plans'}
+    <Plans {today} />
   {:else if route.name === 'lists'}
     <Lists {today} />
   {:else if route.name === 'routines'}
@@ -197,6 +215,12 @@
     <History {today} />
   {:else if route.name === 'more'}
     <More />
+  {:else if route.name === 'me'}
+    <Me {today} />
+  {:else if route.name === 'settings'}
+    <Settings />
+  {:else if route.name === 'exercise'}
+    <Exercise {today} />
   {:else if route.name === 'week'}
     <Week {today} />
   {:else if route.name === 'shopping'}
@@ -220,8 +244,6 @@
     {#key kind}
       <Media {kind} {today} />
     {/key}
-  {:else if route.name === 'projects'}
-    <Projects {today} />
   {:else if route.name === 'goals'}
     <Goals {today} />
   {:else if route.name === 'sync'}
@@ -237,6 +259,9 @@
 
 <nav class="tabs" aria-label="Screens">
   {#each tabs as tab (tab.name)}
-    <a href="#/{tab.name}" aria-current={activeTab === tab.name ? 'page' : undefined}>{tab.label}</a>
+    <a href="#/{tab.name}" aria-current={activeTab === tab.name ? 'page' : undefined}>
+      <Icon name={tab.icon} />
+      <span class="tab-label">{tab.label}</span>
+    </a>
   {/each}
 </nav>

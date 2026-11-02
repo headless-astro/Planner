@@ -1,14 +1,11 @@
 <script lang="ts">
-  import type { Project, Staple } from '../lib/db'
+  import type { Staple } from '../lib/db'
   import { live } from '../lib/live.svelte'
-  import { listProjects, materialsToGet, setMaterialHave } from '../lib/projects'
   import { addStaple, deleteStaple, groupStaples, listStaples, setStapleLow } from '../lib/staples'
 
   const staples = live(() => listStaples, [] as Staple[])
-  const projects = live(() => listProjects, [] as Project[])
   const toBuy = $derived(staples.current.filter((staple) => staple.low))
   const groups = $derived(groupStaples(staples.current))
-  const materials = $derived(materialsToGet(projects.current))
 
   let newName = $state('')
   let newGroup = $state('')
@@ -46,23 +43,6 @@
     <p class="muted small">Nothing to buy right now.</p>
   {/if}
 </section>
-
-{#if materials.length}
-  <section>
-    <h2>For projects</h2>
-    <ul class="list">
-      {#each materials as item (`${item.project.id}|${item.index}`)}
-        <li class="row row-line padded">
-          <span class="text grow">
-            <span class="label">{item.material.name}</span>
-            <span class="detail">{item.project.name}</span>
-          </span>
-          <button type="button" class="button small" onclick={() => setMaterialHave(item.project.id, item.index, true)}>Got it</button>
-        </li>
-      {/each}
-    </ul>
-  </section>
-{/if}
 
 {#each groups as group (group.group)}
   <section>

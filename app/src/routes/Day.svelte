@@ -404,6 +404,10 @@
   </div>
 {/if}
 
+{#if isToday && plan.weekday === 'Sunday'}
+  <p class="review-cta"><a class="button" href="#/review">Review this week</a></p>
+{/if}
+
 {#if week.current}
 <section class="part morning">
   <h2>Morning</h2>

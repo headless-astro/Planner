@@ -63,7 +63,7 @@ export async function addTask(listId: string, title: string, options: { parentId
 }
 
 export const setTaskDone = (id: string, done: boolean, date: string) => update(db.tasks, id, { done, doneDate: done ? date : null })
-export const updateTask = (id: string, changes: Partial<Pick<Task, 'title' | 'due'>>) => update(db.tasks, id, changes)
+export const updateTask = (id: string, changes: Partial<Pick<Task, 'title' | 'due' | 'notes' | 'link'>>) => update(db.tasks, id, changes)
 
 /** Deletes a task with its subtasks. */
 export async function deleteTask(id: string): Promise<void> {

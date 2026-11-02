@@ -28,6 +28,7 @@ import {
   type Targets,
   type TimeOfDay,
 } from './setup'
+import { moveProjectsToLists } from './projects'
 import { alive, byOrder, listOrdered, newId, nextOrder, now, reorder, softDelete, update } from './store'
 
 // ── First run ──
@@ -106,6 +107,8 @@ export async function ensureSeeded(): Promise<void> {
       await db.meta.put({ id: 'seeded-m5', value: now() })
     }
   })
+  // M7: projects live in Lists.
+  await moveProjectsToLists()
 }
 
 // ── Setup lists: med doses, habits, snack list ──

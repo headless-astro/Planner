@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { addDays, formatDate, formatShort, parseDate, toISODate } from '../lib/dates'
+  import { addDays, formatDate, formatShort, parseDate, toISODate, weekStart } from '../lib/dates'
   import type { Measurement } from '../lib/db'
   import { live } from '../lib/live.svelte'
   import { getDaySummaries, getMeasurements, type DaySummary } from '../lib/repo'
+  import { listReviewedWeeks } from '../lib/review'
 
   let { today }: { today: string } = $props()
 
@@ -13,6 +14,14 @@
     const to = today
     return () => getDaySummaries(from, to)
   }, [] as DaySummary[])
+  const reviewed = live(() => listReviewedWeeks, [] as string[])
+
+  /** The weeks shown, newest first, each opening its weekly review (F37). */
+  const reviewWeeks = $derived.by(() => {
+    const thisMonday = weekStart(parseDate(today))
+    return Array.from({ length: weeks }, (_, i) => toISODate(addDays(thisMonday, -7 * i)))
+  })
+
   const weights = live(() => () => getMeasurements('weight'), [] as Measurement[])
   const waists = live(() => () => getMeasurements('waist'), [] as Measurement[])
 
@@ -41,8 +50,24 @@
 
 <header>
   <h1>History</h1>
-  <p class="date">Tap a day to see or change it.</p>
+  <p class="date">Tap a week for its review, or a day to see or change it.</p>
 </header>
+
+<section>
+  <h2>Weekly reviews</h2>
+  <ul class="list more-list">
+    {#each reviewWeeks as monday, index (monday)}
+      <li>
+        <a href="#/review/{monday}">
+          <span class="label">{index === 0 ? 'This week' : `Week of ${formatShort(parseDate(monday))}`}</span>
+          <span class="detail">
+            {formatShort(parseDate(monday))} – {formatShort(addDays(parseDate(monday), 6))}{reviewed.current.includes(monday) ? ' · notes written' : ''}
+          </span>
+        </a>
+      </li>
+    {/each}
+  </ul>
+</section>
 
 <section>
   <h2>Days</h2>

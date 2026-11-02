@@ -29,6 +29,7 @@
     "workbox-routing": "^7.4.1"
   },
   "dependencies": {
+    "@phosphor-icons/core": "^2.1.1",
     "dexie": "^4.4.7",
     "qrcode-generator": "2.0.4"
   }

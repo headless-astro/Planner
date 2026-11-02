@@ -59,3 +59,9 @@ export async function getWeekReview(monday: string): Promise<WeekReview> {
     notes: typeof notes === 'string' ? notes : '',
   }
 }
+
+/** The Mondays of the weeks whose review has notes. */
+export async function listReviewedWeeks(): Promise<string[]> {
+  const rows = alive(await db.entries.where('key').equals('review').toArray())
+  return rows.filter((row) => typeof row.value === 'string' && row.value.trim()).map((row) => row.date)
+}
