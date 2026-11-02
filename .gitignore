@@ -1,0 +1,16 @@
+# Personal planning doc with health details: never commit it (PLAN.md, D46)
+PLAN.md
+
+# Dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Local environment and editor files
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.wrangler/

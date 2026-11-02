@@ -1,0 +1,356 @@
+import { flushSync, mount, unmount } from 'svelte'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import App from './App.svelte'
+import { db } from './lib/db'
+import { listDrawingLogs } from './lib/drawing'
+import { listMedia } from './lib/media'
+import { listDoses, listHabits, listSnackDefs, setEntry, setMeasurement } from './lib/repo'
+import { getSyncState, linkFor } from './lib/sync'
+import { setRoutineDone } from './lib/routines'
+import { listTopics } from './lib/study'
+
+// Screen tests: the whole app in a simulated browser, saving to an in-memory database.
+// The clock is fixed to Monday 2 Nov 2026, midday.
+
+let app: ReturnType<typeof mount> | undefined
+
+async function open(hash = '') {
+  location.hash = hash
+  app = mount(App, { target: document.body })
+  flushSync()
+  await vi.waitFor(() => expect(document.querySelector('h1')).not.toBeNull())
+}
+
+function close() {
+  if (app) unmount(app)
+  app = undefined
+  document.body.innerHTML = ''
+}
+
+function go(hash: string) {
+  location.hash = hash
+  window.dispatchEvent(new Event('hashchange'))
+}
+
+const text = () => document.body.textContent ?? ''
+const heading = () => document.querySelector('h1')?.textContent
+const buttonByText = (label: string) =>
+  [...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith(label))
+const checkboxFor = (label: string) =>
+  [...document.querySelectorAll('label.check')].find((row) => row.textContent?.includes(label))?.querySelector('input') ?? undefined
+
+function click(element: Element | null | undefined) {
+  if (!(element instanceof HTMLElement)) throw new Error('element not found')
+  element.click()
+  flushSync()
+}
+
+function type(element: Element | null | undefined, value: string) {
+  if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) throw new Error('field not found')
+  element.value = value
+  element.dispatchEvent(new Event('input', { bubbles: true }))
+  flushSync()
+}
+
+function submit(element: Element | null | undefined) {
+  if (!(element instanceof HTMLInputElement) || !element.form) throw new Error('form not found')
+  element.form.requestSubmit()
+  flushSync()
+}
+
+beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date(2026, 10, 2, 12, 0))
+  await db.delete()
+  await db.open()
+})
+
+afterEach(() => {
+  close()
+  location.hash = ''
+  vi.useRealTimers()
+})
+
+describe('Today', () => {
+  it('lays out Monday from the saved setup', async () => {
+    await open()
+    expect(heading()).toBe('Monday')
+    await vi.waitFor(() => expect(text()).toContain('Meds · empty stomach'))
+    expect(text()).toContain('Tech study → #1')
+    expect(text()).toContain('Workout → strength, 2 rounds')
+  })
+
+  it('keeps ticks after the app is reopened', async () => {
+    await open()
+    await vi.waitFor(() => expect(checkboxFor('Workout')).toBeTruthy())
+    click(checkboxFor('Workout'))
+    await vi.waitFor(() => expect(document.querySelector('.week')?.textContent).toContain('Fitness 1/6'))
+    close()
+    await open()
+    await vi.waitFor(() => expect(checkboxFor('Workout')?.checked).toBe(true))
+  })
+
+  it('adds snacks against the 200 kcal budget', async () => {
+    await open()
+    click(buttonByText('Add snack'))
+    await vi.waitFor(() => expect(buttonByText('10 almonds')).toBeTruthy())
+    click(buttonByText('10 almonds'))
+    await vi.waitFor(() => expect(document.querySelector('.snack-head')?.textContent).toContain('70 / 200 kcal'))
+    click(buttonByText('7 walnut halves'))
+    await vi.waitFor(() => expect(document.querySelector('.snack-head')?.textContent).toContain('160 / 200 kcal'))
+  })
+
+  it('adds a to-do', async () => {
+    await open()
+    const input = document.querySelector('input[aria-label="New to-do"]')
+    type(input, 'finish shaders')
+    submit(input)
+    await vi.waitFor(() => expect(text()).toContain('finish shaders'))
+  })
+
+  it('saves the food diary as you type', async () => {
+    await open()
+    type(document.querySelector('textarea'), 'lentil soup, yogurt')
+    await vi.waitFor(async () => expect((await db.entries.get('2026-11-02|diary'))?.value).toBe('lentil soup, yogurt'))
+  })
+})
+
+describe('Week', () => {
+  it('shows the seven days with today marked', async () => {
+    await open('#/week')
+    expect(heading()).toBe('This week')
+    expect(document.querySelectorAll('.daycard')).toHaveLength(7)
+    expect(document.querySelector('.daycard.today')?.textContent).toContain('Monday')
+  })
+})
+
+describe('History', () => {
+  it('lists past days and opens one for editing', async () => {
+    await setEntry('2026-11-01', 'work', '2')
+    await open('#/history')
+    await vi.waitFor(() => expect(text()).toContain('Work 2'))
+    go('#/day/2026-11-01')
+    await vi.waitFor(() => expect(heading()).toBe('Sunday'))
+    expect(text()).toContain('Back to today')
+  })
+})
+
+describe('Setup', () => {
+  it('adds a dose that then shows on Today', async () => {
+    await open('#/setup')
+    const input = document.querySelector('input[aria-label="New dose"]')
+    type(input, 'Meds · with lunch')
+    submit(input)
+    await vi.waitFor(async () => expect((await listDoses()).map((dose) => dose.label)).toContain('Meds · with lunch'))
+    go('#/today')
+    await vi.waitFor(() => expect(text()).toContain('Meds · with lunch'))
+  })
+
+  it('adds a habit with a target and a snack with its calories', async () => {
+    await open('#/setup')
+    type(document.querySelector('input[aria-label="New habit"]'), 'Stretch')
+    type(document.querySelector('input[aria-label="New habit: days a week"]'), '3')
+    submit(document.querySelector('input[aria-label="New habit"]'))
+    type(document.querySelector('input[aria-label="New snack"]'), 'Rice cake')
+    type(document.querySelector('input[aria-label="New snack: kcal"]'), '35')
+    submit(document.querySelector('input[aria-label="New snack"]'))
+    await vi.waitFor(async () => expect(await listHabits()).toContainEqual(expect.objectContaining({ label: 'Stretch', weeklyTarget: 3 })))
+    await vi.waitFor(async () => expect(await listSnackDefs()).toContainEqual(expect.objectContaining({ name: 'Rice cake', kcal: 35 })))
+  })
+})
+
+describe('Routines', () => {
+  it('marks a routine done, which also ticks Chores for cleaning', async () => {
+    await open('#/routines')
+    await vi.waitFor(() => expect(text()).toContain('Vacuum'))
+    const row = [...document.querySelectorAll('.routine-head')].find((head) => head.textContent?.includes('Vacuum'))
+    click(row?.querySelector('button'))
+    await vi.waitFor(() => expect(row?.textContent).toContain('Undo'))
+    await vi.waitFor(async () => expect((await db.entries.get('2026-11-02|tick:chores'))?.value).toBe(true))
+  })
+
+  it('shows a routine on Today when it is due', async () => {
+    await setRoutineDone('routine-vacuum', '2026-10-28', true)
+    await open()
+    await vi.waitFor(() => expect(text()).toContain('routine · due today'))
+  })
+})
+
+describe('Lists', () => {
+  it('adds a task with a deadline, which then shows on Today', async () => {
+    await open('#/lists')
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="New task"]')).toBeTruthy())
+    const input = document.querySelector('input[aria-label="New task"]')
+    type(input, 'Renew passport')
+    type(document.querySelector('input[aria-label="Deadline (optional)"]'), '2026-11-02')
+    submit(input)
+    await vi.waitFor(() => expect(text()).toContain('Renew passport'))
+    go('#/today')
+    await vi.waitFor(() => expect(text()).toContain('Life · due today'))
+  })
+})
+
+describe('Shopping', () => {
+  it('puts a staple on the list when it runs low', async () => {
+    await open('#/shopping')
+    await vi.waitFor(() => expect(checkboxFor('Oats')).toBeTruthy())
+    click(checkboxFor('Oats'))
+    await vi.waitFor(() => expect(document.querySelector('section')?.textContent).toContain('Oats'))
+  })
+})
+
+describe('Tech study', () => {
+  it('ticking the morning slot marks the topic done', async () => {
+    await open()
+    await vi.waitFor(() => expect(checkboxFor('Tech study → #1')).toBeTruthy())
+    click(checkboxFor('Tech study → #1'))
+    await vi.waitFor(async () => expect((await listTopics())[0].doneDate).toBe('2026-11-02'))
+    go('#/study')
+    await vi.waitFor(() => expect(text()).toContain('1 of 37'))
+  })
+})
+
+describe('Spanish', () => {
+  it('ticking the Tuesday book slot logs the first review session', async () => {
+    vi.setSystemTime(new Date(2026, 10, 3, 12, 0))
+    await open()
+    await vi.waitFor(() => expect(checkboxFor('Spanish book → review session 1 of 2')).toBeTruthy())
+    click(checkboxFor('Spanish book'))
+    await vi.waitFor(() => expect(checkboxFor('Spanish book')?.checked).toBe(true))
+    go('#/spanish')
+    await vi.waitFor(() => expect(text()).toContain('1 review session'))
+  })
+})
+
+describe('Recipes', () => {
+  it('"Cooked today" ticks Cooked', async () => {
+    await open('#/recipes')
+    await vi.waitFor(() => expect(buttonByText('Cooked today')).toBeTruthy())
+    click(buttonByText('Cooked today'))
+    await vi.waitFor(async () => expect((await db.entries.get('2026-11-02|tick:cooked'))?.value).toBe(true))
+  })
+})
+
+describe('Stats and review', () => {
+  it('show the numbers and the weight chart', async () => {
+    await setMeasurement('2026-10-24', 'weight', 81.2)
+    await setMeasurement('2026-10-31', 'weight', 80.6)
+    await open('#/stats')
+    await vi.waitFor(() => expect(text()).toContain('Days logged'))
+    await vi.waitFor(() => expect(document.querySelector('.chart-plot')?.getAttribute('aria-valuetext')).toBe('Sat 31 Oct: 80.6 kg'))
+    expect(text()).toContain('Goal pace')
+    go('#/review')
+    await vi.waitFor(() => expect(text()).toContain('The week in numbers'))
+  })
+})
+
+describe('Drawing', () => {
+  it("Friday's slot shows the week's area and logs a session", async () => {
+    vi.setSystemTime(new Date(2026, 10, 6, 12, 0))
+    await open()
+    await vi.waitFor(() => expect(checkboxFor('Drawing → Anatomy')).toBeTruthy())
+    expect(text()).toContain('Show exercises')
+    click(checkboxFor('Drawing → Anatomy'))
+    await vi.waitFor(async () => expect(await listDrawingLogs()).toMatchObject([{ date: '2026-11-06', areaId: 'drawing-anatomy' }]))
+    go('#/drawing')
+    await vi.waitFor(() => expect(heading()).toBe('Drawing'))
+    await vi.waitFor(() => expect(text()).toContain('1 session'))
+    expect(text()).toContain('This week: Anatomy')
+  })
+})
+
+describe('Books, games and shows', () => {
+  it('adds a book, and finishing it ticks Read and asks for a rating', async () => {
+    await open('#/books')
+    const input = document.querySelector('input[aria-label="New book"]')
+    type(input, 'Dune')
+    submit(input)
+    await vi.waitFor(() => expect(buttonByText('Finished')).toBeTruthy())
+    click(buttonByText('Finished'))
+    await vi.waitFor(async () => expect((await db.entries.get('2026-11-02|tick:read'))?.value).toBe(true))
+    await vi.waitFor(() => expect(text()).toContain('How was it?'))
+    click(document.querySelector('.rate button[aria-label="4 of 5"]'))
+    await vi.waitFor(async () => expect((await listMedia('book'))[0].rating).toBe(4))
+  })
+
+  it('switches to games and shows', async () => {
+    await open('#/books')
+    go('#/shows')
+    await vi.waitFor(() => expect(heading()).toBe('Movies & shows'))
+    expect(document.querySelector('a[aria-current="page"].chip')?.textContent).toBe('Movies & shows')
+  })
+})
+
+describe('Craft projects', () => {
+  it('a material you still need shows on the shopping list', async () => {
+    await open('#/projects')
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="New material for Frog"]')).toBeTruthy())
+    const input = document.querySelector('input[aria-label="New material for Frog"]')
+    type(input, 'Green yarn')
+    submit(input)
+    await vi.waitFor(() => expect(text()).toContain('Green yarn'))
+    go('#/shopping')
+    await vi.waitFor(() => expect(text()).toContain('For projects'))
+    expect(text()).toContain('Green yarn')
+  })
+})
+
+describe('Goals', () => {
+  it('shows the goal tree with progress lines', async () => {
+    await open('#/goals')
+    await vi.waitFor(() => expect(text()).toContain('Improve technical knowledge'))
+    await vi.waitFor(() => expect(text()).toContain('0 of 37 tech topics done'))
+    click(buttonByText('Edit goals'))
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="New goal"]')).toBeTruthy())
+  })
+})
+
+describe('Sync and reminders', () => {
+  const SERVER = 'https://planner-sync.test'
+
+  beforeEach(() => {
+    // A server that takes everything and has nothing new to send back.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const path = new URL(url).pathname
+        const body = path === '/' ? { app: 'planner-sync', claimed: false } : path === '/claim' ? { claimed: true } : { cursor: 0, changes: [], more: false, accepted: 0, reset: false }
+        return new Response(JSON.stringify(body), { status: 200 })
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('connects the first device and shows the link for the others', async () => {
+    await open('#/sync')
+    const input = document.querySelector('input[aria-label="Server address"]')
+    type(input, 'planner-sync.test')
+    submit(input)
+    await vi.waitFor(() => expect(text()).toContain('Connected to planner-sync.test'))
+    await vi.waitFor(() => expect(text()).toContain('Synced just now'))
+    click(buttonByText('Show the link and QR code'))
+    expect(document.querySelector('svg.qr path')?.getAttribute('d')).toMatch(/^M/)
+  })
+
+  it('connects another device from its link, and takes the key out of the address bar', async () => {
+    const link = linkFor({ server: SERVER, key: 'k'.repeat(43) }, 'https://me.github.io/planner/')
+    await open(`#/link/${link.split('#/link/')[1]}`)
+    expect(text()).toContain('planner-sync.test')
+    expect(location.hash).toBe('#/link')
+    click(buttonByText('Connect'))
+    await vi.waitFor(() => expect(text()).toContain('Connected. Your data is syncing now.'))
+    expect((await getSyncState()).config).toEqual({ server: SERVER, key: 'k'.repeat(43) })
+  })
+})
+
+describe('Crunch days', () => {
+  it('can be started from Today', async () => {
+    await open()
+    await vi.waitFor(() => expect(buttonByText('Busy stretch?')).toBeTruthy())
+    click(buttonByText('Busy stretch?'))
+    await vi.waitFor(() => expect(text()).toContain('Crunch day:'))
+  })
+})

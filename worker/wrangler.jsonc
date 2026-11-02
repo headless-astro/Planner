@@ -1,0 +1,19 @@
+// The planner's sync and reminder server (PLAN.md 12.6).
+// Before the first deploy, put the id that `npx wrangler d1 create planner` prints into database_id.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "planner-sync",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "planner",
+      "database_id": "REPLACE-WITH-YOUR-DATABASE-ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Every 5 minutes: is a reminder due? (PLAN.md 11.5)
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "observability": { "enabled": true }
+}
