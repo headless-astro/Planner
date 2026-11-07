@@ -1,33 +1,30 @@
 <script lang="ts">
+  import { ALL_FEATURES, type Feature } from '../lib/features'
   import { downloadBackup, exportBackup, importBackup } from '../lib/backup'
   import { formatDate } from '../lib/dates'
-  import type { Dose, Habit, SnackDef } from '../lib/db'
+  import type { Dose, Habit } from '../lib/db'
   import { live } from '../lib/live.svelte'
   import {
     addDose,
     addHabit,
-    addSnackDef,
     deleteDose,
     deleteHabit,
-    deleteSnackDef,
     getAppearance,
+    getFeatures,
     getFoodRules,
     getMeta,
     getReminders,
     getTargets,
     listDoses,
     listHabits,
-    listSnackDefs,
     moveDose,
     moveHabit,
-    moveSnackDef,
     setMeta,
     updateAppearance,
     updateDose,
     updateFoodRules,
     updateHabit,
     updateReminders,
-    updateSnackDef,
     updateTargets,
   } from '../lib/repo'
   import {
@@ -44,7 +41,6 @@
 
   const doses = live(() => listDoses, [] as Dose[])
   const habits = live(() => listHabits, [] as Habit[])
-  const snackDefs = live(() => listSnackDefs, [] as SnackDef[])
   const targets = live(() => getTargets, DEFAULT_TARGETS)
   const reminders = live(() => getReminders, DEFAULT_REMINDERS)
   const lastExport = live(() => () => getMeta<number>('lastExport'), undefined as number | undefined)
@@ -58,22 +54,19 @@
     { value: 'evening', label: 'Evening' },
   ]
 
-  const TARGET_FIELDS: { key: keyof Targets; label: string; unit: string }[] = [
-    { key: 'rules', label: 'Food rules kept', unit: 'days a week' },
-    { key: 'fitness', label: 'Workouts', unit: 'a week' },
-    { key: 'spanish', label: 'Spanish', unit: 'days a week' },
-    { key: 'study', label: 'Tech study', unit: 'sessions a week' },
-    { key: 'skin', label: 'Skin routine', unit: 'days a week' },
-    { key: 'snackBudget', label: 'Snack budget', unit: 'kcal a day' },
+  // The built-in counts' targets, for the parts that are turned on (F63).
+  const features = live(() => getFeatures, ALL_FEATURES)
+  const TARGET_FIELDS: { key: Exclude<keyof Targets, 'snackBudget' | 'weeklyLoss' | 'spanish' | 'study'>; label: string; unit: string; feature: Feature }[] = [
+    { key: 'rules', label: 'Food guidelines mostly followed', unit: 'days a week', feature: 'food' },
+    { key: 'fitness', label: 'Workouts', unit: 'a week', feature: 'exercise' },
   ]
+  const shownTargets = $derived(TARGET_FIELDS.filter((field) => features.current[field.feature]))
 
   let newDose = $state('')
   let newDoseTime = $state<TimeOfDay>('anytime')
   let newHabit = $state('')
   // Number boxes bound with bind:value hold numbers (or null when empty), not text.
   let newHabitTarget = $state<number | null>(null)
-  let newSnack = $state('')
-  let newSnackKcal = $state<number | null>(null)
   let importMessage = $state<string | null>(null)
   let persisted = $state<boolean | null>(null)
 
@@ -102,16 +95,6 @@
     await addHabit(label, wholeNumber(newHabitTarget))
     newHabit = ''
     newHabitTarget = null
-  }
-
-  async function submitSnack(event: SubmitEvent) {
-    event.preventDefault()
-    const name = newSnack.trim()
-    const kcal = wholeNumber(newSnackKcal)
-    if (!name || kcal === null) return
-    await addSnackDef(name, kcal)
-    newSnack = ''
-    newSnackKcal = null
   }
 
   function rename(text: string, save: (name: string) => Promise<void>) {
@@ -248,7 +231,7 @@
 <section>
   <h2>Targets</h2>
   <div class="card targets">
-    {#each TARGET_FIELDS as field (field.key)}
+    {#each shownTargets as field (field.key)}
       <label for="target-{field.key}">{field.label}</label>
       <span class="target-input">
         <input
@@ -264,17 +247,37 @@
         <span class="hint">{field.unit}</span>
       </span>
     {/each}
+    {#if features.current.body}
+      <label for="target-weekly-loss">Weight goal pace</label>
+      <span class="target-input">
+        <input
+          id="target-weekly-loss"
+          type="number"
+          min="0"
+          step="0.1"
+          value={targets.current.weeklyLoss ?? ''}
+          onchange={(event) => {
+            const text = event.currentTarget.value.replace(',', '.')
+            const value = text === '' ? null : Number(text)
+            if (value === null || (Number.isFinite(value) && value >= 0)) void updateTargets({ weeklyLoss: value })
+          }}
+        />
+        <span class="hint">kg a week, for the chart's goal line (empty for none)</span>
+      </span>
+    {/if}
   </div>
+  <p class="muted small">Habits under "Also today" have their targets above, with each habit. A track's is on its page; your own activities aim for the days they're on.</p>
 </section>
 
+{#if features.current.food}
 <section>
-  <h2>Food rules</h2>
+  <h2>Food guidelines</h2>
   <label class="field">
-    <span class="small">One rule per line. They show under "See the rules" on Today, on the days the rules are on.</span>
+    <span class="small">One guideline per line. They show under "See the guidelines" on Today, on the days they're on. Snacks are one of them.</span>
     <textarea
       rows="8"
       value={foodRules.current.join('\n')}
-      aria-label="Food rules, one per line"
+      aria-label="Food guidelines, one per line"
       onchange={(event) => {
         const rules = textLines(event.currentTarget.value)
         void updateFoodRules(rules.length ? rules : DEFAULT_FOOD_RULES)
@@ -282,41 +285,7 @@
     ></textarea>
   </label>
 </section>
-
-<section>
-  <h2>Snack list</h2>
-  <ul class="card edit-list">
-    {#each snackDefs.current as snack, index (snack.id)}
-      <li>
-        <input
-          class="grow"
-          type="text"
-          value={snack.name}
-          aria-label="Snack name"
-          onchange={(event) => rename(event.currentTarget.value, (name) => updateSnackDef(snack.id, { name }))}
-        />
-        <input
-          type="number"
-          min="0"
-          value={snack.kcal}
-          aria-label="{snack.name}: kcal"
-          onchange={(event) => {
-            const kcal = wholeNumber(event.currentTarget.value)
-            if (kcal !== null) void updateSnackDef(snack.id, { kcal })
-          }}
-        />
-        <span class="hint">kcal</span>
-        {@render rowActions(snack.name, index, snackDefs.current.length, (step) => moveSnackDef(snack.id, step), () => deleteSnackDef(snack.id))}
-      </li>
-    {/each}
-  </ul>
-  <form class="add-row" onsubmit={submitSnack}>
-    <input class="grow" type="text" bind:value={newSnack} placeholder="New snack" aria-label="New snack" />
-    <input type="number" min="0" bind:value={newSnackKcal} placeholder="kcal" aria-label="New snack: kcal" />
-    <button type="submit" class="button">Add</button>
-  </form>
-</section>
-
+{/if}
 <section>
   <h2>Reminders</h2>
   <div class="card targets">

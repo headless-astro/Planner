@@ -12,8 +12,10 @@ export interface ShelfInfo {
   /** Movies and shows only. */
   format: 'movie' | 'show' | null
   title: string
-  /** The sub-tab with what you're on now and what you finished. */
+  /** The sub-tab with what you're on now. */
   log: string
+  /** The sub-tab with what you finished (F51). */
+  done: string
   /** "book", as in "Add a book". */
   one: string
   active: string
@@ -25,10 +27,10 @@ export interface ShelfInfo {
 }
 
 export const SHELVES: Record<Shelf, ShelfInfo> = {
-  books: { kind: 'book', format: null, title: 'Books', log: 'Reading', one: 'book', active: 'Reading now', want: 'Want to read', tick: 'read', stars: false },
-  games: { kind: 'game', format: null, title: 'Games', log: 'Playing', one: 'game', active: 'Playing now', want: 'Want to play', tick: null, stars: false },
-  movies: { kind: 'watch', format: 'movie', title: 'Movies', log: 'Watched', one: 'movie', active: 'Watching now', want: 'Want to watch', tick: 'movie', stars: true },
-  shows: { kind: 'watch', format: 'show', title: 'Shows', log: 'Watching', one: 'show', active: 'Watching now', want: 'Want to watch', tick: 'movie', stars: false },
+  books: { kind: 'book', format: null, title: 'Books', log: 'Reading', done: 'Finished', one: 'book', active: 'Reading now', want: 'Want to read', tick: 'read', stars: false },
+  games: { kind: 'game', format: null, title: 'Games', log: 'Playing', done: 'Finished', one: 'game', active: 'Playing now', want: 'Want to play', tick: null, stars: false },
+  movies: { kind: 'watch', format: 'movie', title: 'Movies', log: 'Watching', done: 'Watched', one: 'movie', active: 'Watching now', want: 'Want to watch', tick: 'movie', stars: true },
+  shows: { kind: 'watch', format: 'show', title: 'Shows', log: 'Watching', done: 'Finished', one: 'show', active: 'Watching now', want: 'Want to watch', tick: 'movie', stars: false },
 }
 
 export function shelfOf(item: Pick<MediaItem, 'kind' | 'format'>): Shelf {

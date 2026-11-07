@@ -1,16 +1,14 @@
 // The text of a reminder (PLAN.md 11.5, S22), written on the device from its own data: the
 // morning one lists what the day holds, the night one what's left to close the day.
 import { parseDate, todayISO } from './dates'
-import { listDrawingAreas, listDrawingLogs } from './drawing'
+import { db } from './db'
 import { buildDay, type PlanItem } from './plan'
-import { getDayValues, getTodos, getWeek, listDoses } from './repo'
+import { getDayValues, getExercise, getFeatures, getTodos, getWeek, listDoses } from './repo'
 import { getRoutineStatuses } from './routines'
 import type { Reminders } from './setup'
-import { getSpanishSettings, listSpanishLogs } from './spanish'
-import { listTopics } from './study'
+import { alive } from './store'
 import { getDueTasks } from './tasks'
-import { trackSetup } from './trackSetup'
-import { listTracks } from './tracks'
+import { listSessions, listTracks } from './tracks'
 
 export type ReminderKind = 'morning' | 'night'
 
@@ -39,36 +37,31 @@ const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 /** The reminder for the planner day at `now` (it runs until 06:00, D24). */
 export async function reminderText(kind: ReminderKind, now = new Date()): Promise<ReminderText> {
   const date = todayISO(now)
-  const [week, doses, tracks, topics, spanishLogs, spanishSettings, drawingAreas, drawingLogs, values, todos] = await Promise.all([
+  const [week, doses, tracks, steps, sessions, values, todos, exercise, features] = await Promise.all([
     getWeek(),
     listDoses(),
     listTracks(),
-    listTopics(),
-    listSpanishLogs(),
-    getSpanishSettings(),
-    listDrawingAreas(),
-    listDrawingLogs(),
+    db.topics.toArray().then(alive),
+    listSessions(),
     getDayValues(date),
     getTodos(date, true),
+    getExercise(),
+    getFeatures(),
   ])
-  const slots = trackSetup(date, { topics, spanishLogs, spanishSettings, drawingAreas, drawingLogs })
-  const plan = buildDay(parseDate(date), {
-    week,
-    doses,
-    tracks,
-    studyTopic: slots.studyTopic,
-    bookSession: slots.bookSession,
-    drawingArea: slots.drawingArea,
-  })
-  const open = (item: PlanItem) => values[`tick:${item.id}`] !== true
+  const plan = buildDay(parseDate(date), { week, doses, tracks, steps, sessions, exercise, features })
+  // A track's activity is done once it has a session that day; your own once it's ticked.
+  const open = (item: PlanItem) => {
+    if (item.trackId) return !sessions.some((session) => session.trackId === item.trackId && session.date === date)
+    return values[`tick:${item.tickKey ?? item.id}`] !== true
+  }
   const doseIds = new Set(doses.map((dose) => dose.id))
   const todosLeft = todos.filter((todo) => !todo.done).length
 
   if (kind === 'night') {
     const parts = [
       ...plan.evening.filter((item) => doseIds.has(item.id) && open(item)).map((item) => item.label),
-      plan.foodRules && values.rules === undefined ? 'Food rules: kept or slip?' : '',
-      values.work === undefined ? 'Rate your work' : '',
+      plan.foodRules && values.rules === undefined ? 'How did eating go?' : '',
+      features.work && values.work === undefined ? 'Rate your work' : '',
       todosLeft ? `${count(todosLeft, 'to-do')} left` : '',
     ].filter(Boolean)
     return { title: 'Closing the day', body: parts.length ? parts.join(' · ') : 'All done for today. Sleep well.' }

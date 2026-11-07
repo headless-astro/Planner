@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
-import { saveDrawingLog } from './drawing'
-import { addGoal, deleteGoal, getGoalProgress, goalTree, listGoals, moveGoal } from './goals'
+import { addGoal, deleteGoal, getGoalProgress, goalPercent, goalTree, listGoals, moveGoal } from './goals'
 import { addMedia } from './media'
 import { ensureSeeded, setEntry, setMeasurement, toggleTick } from './repo'
-import { addSpanishLog } from './spanish'
-import { setTopicDone } from './study'
+import { DRAWING_TRACK, SPANISH_TRACK } from './activities'
+import { migrateToTracks } from './migrateTracks'
+import { saveSession, updateStep } from './tracks'
 
 beforeEach(async () => {
   await db.delete()
@@ -46,24 +46,33 @@ describe('goals', () => {
     await toggleTick('2026-11-20', 'workout')
     await setEntry('2026-11-20', 'rules', 'kept')
     await setEntry('2026-11-19', 'rules', 'slip')
-    await setTopicDone('topic-1', '2026-11-02', true)
-    await addSpanishLog('2026-11-03', 'video', { minutes: 90 })
-    await saveDrawingLog('2026-11-06', { areaId: 'drawing-anatomy' })
+    await migrateToTracks()
+    await updateStep('topic-1', { doneDate: '2026-11-02' })
+    await saveSession(SPANISH_TRACK, '2026-11-03', { minutes: 90 }, 'spanish-video')
+    await saveSession(DRAWING_TRACK, '2026-11-06', { focus: 'Anatomy' }, 'drawing')
     await addMedia('book', 'Dune', 'done', '2026-11-15')
 
     const progress = await getGoalProgress('2026-11-21')
-    expect(progress.weight.text).toBe('Down 1.0 kg since Sat 7 Nov · goal pace: down 0.8 kg')
-    expect(progress.fitness.text).toBe('1 workout in the last 4 weeks')
-    expect(progress['food-rules'].text).toBe('Food rules kept on 1 day in the last 4 weeks')
-    expect(progress.drawing.text).toBe('1 drawing day in the last 4 weeks · this week: Gesture & movement')
-    expect(progress.study.text).toBe('1 of 37 tech topics done')
-    expect(progress.spanish.text).toBe('1.5 h of Dreaming Spanish · level 1, 48.5 h to level 2')
-    expect(progress.reading.text).toBe('1 book finished in 2026 · read on 1 day in the last 4 weeks')
+    expect(progress.weight).toMatchObject({ value: '79.0 kg', text: 'Down 1.0 kg since Sat 7 Nov · goal pace: down 0.8 kg', amount: 79, start: 80 })
+    expect(progress.fitness).toMatchObject({ value: '1 workout', text: 'in the last 4 weeks', amount: 1 })
+    expect(progress['food-rules']).toMatchObject({ value: '1 day', amount: 1 })
+    // Goals from before follow the tracks these became (D83).
+    expect(progress.drawing).toMatchObject({ value: '1 day', text: 'in the last 4 weeks · this week: Gesture & movement' })
+    expect(progress.study).toMatchObject({ value: '1 of 37', text: 'steps done' })
+    expect(progress.spanish).toMatchObject({ value: '1.5 h', text: '48.5 h to Level 2' })
+    expect(progress[`track:${SPANISH_TRACK}`]).toEqual(progress.spanish)
+    expect(progress.reading).toMatchObject({ value: '1 book', text: 'finished in 2026 · read on 1 day in the last 4 weeks' })
+
+    // A target turns the headline into a bar: weight runs from where it started to the target.
+    expect(goalPercent(76, progress.weight)).toBe(25)
+    expect(goalPercent(4, progress.fitness)).toBe(25)
+    expect(goalPercent(null, progress.fitness)).toBeNull()
   })
 
   it('say when there is nothing yet', async () => {
     const progress = await getGoalProgress('2026-11-02')
-    expect(progress.weight.text).toBe('No weigh-ins yet. They go in on Saturdays, on Today.')
-    expect(progress.fitness.text).toBe('0 workouts in the last 4 weeks')
+    expect(progress.weight?.text).toBe('No weigh-ins yet. They go in on Saturdays, on Today.')
+    expect(progress.fitness).toMatchObject({ value: '0 workouts', amount: 0 })
+    expect(progress.weight?.amount).toBeNull()
   })
 })

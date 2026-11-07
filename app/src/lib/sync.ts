@@ -109,38 +109,86 @@ export const newKey = () => base64url(crypto.getRandomValues(new Uint8Array(32))
 
 const KEY_FORMAT = /^[A-Za-z0-9_-]{32,128}$/
 
-/** The link that connects another device: the app's address with the server and key after #. */
-export function linkFor(config: SyncConfig, appAddress: string): string {
-  const payload = base64url(new TextEncoder().encode(JSON.stringify({ s: config.server, k: config.key })))
+/**
+ * The link that connects another device: the app's address with the server and key after #.
+ * It also says whether the device it came from has the original setup ("mine"), so the new
+ * device sets up the same way: starting records that never changed aren't on the server.
+ */
+export function linkFor(config: SyncConfig, appAddress: string, mine = true): string {
+  const payload = base64url(new TextEncoder().encode(JSON.stringify({ s: config.server, k: config.key, ...(mine ? {} : { m: 'own' }) })))
   return `${appAddress.split('#')[0]}#/link/${payload}`
 }
 
-/** The server and key in a link's payload, or null if it's damaged. */
-export function readLink(payload: string): SyncConfig | null {
+/** The server and key in a link's payload, or null if it's damaged. Links from before are "mine". */
+export function readLink(payload: string): (SyncConfig & { mine: boolean }) | null {
   try {
-    const data = JSON.parse(new TextDecoder().decode(fromBase64url(payload))) as { s?: unknown; k?: unknown }
+    const data = JSON.parse(new TextDecoder().decode(fromBase64url(payload))) as { s?: unknown; k?: unknown; m?: unknown }
     const server = typeof data.s === 'string' ? serverAddress(data.s) : null
-    return server && typeof data.k === 'string' && KEY_FORMAT.test(data.k) ? { server, key: data.k } : null
+    return server && typeof data.k === 'string' && KEY_FORMAT.test(data.k) ? { server, key: data.k, mine: data.m !== 'own' } : null
   } catch {
     return null
   }
+}
+
+// ── Inviting someone (F66, D72): their own space on the same server ──
+
+const INVITE_FORMAT = /^[A-Za-z2-9]{12}$/
+
+export interface Invite {
+  server: string
+  code: string
+}
+
+/** The link that lets someone join: the app's address with the server and a one-time code. */
+export function inviteLinkFor(invite: Invite, appAddress: string): string {
+  const payload = base64url(new TextEncoder().encode(JSON.stringify({ s: invite.server, i: invite.code })))
+  return `${appAddress.split('#')[0]}#/join/${payload}`
+}
+
+/** The server and code in an invite link, or null if it's damaged. */
+export function readInvite(payload: string): Invite | null {
+  try {
+    const data = JSON.parse(new TextDecoder().decode(fromBase64url(payload))) as { s?: unknown; i?: unknown }
+    const server = typeof data.s === 'string' ? serverAddress(data.s) : null
+    return server && typeof data.i === 'string' && INVITE_FORMAT.test(data.i) ? { server, code: data.i.toUpperCase() } : null
+  } catch {
+    return null
+  }
+}
+
+/** Whether this device's key owns the server, so it can invite people. */
+export async function isServerOwner(config: SyncConfig): Promise<boolean> {
+  try {
+    return (await serverCall<{ owner?: boolean }>(config, '/me')).owner === true
+  } catch {
+    return false
+  }
+}
+
+/** A new one-time invite, valid for a week (owner only). */
+export async function createInvite(config: SyncConfig): Promise<{ code: string; expires: number }> {
+  return serverCall<{ code: string; expires: number }>(config, '/invite', {})
 }
 
 // ── Connecting ──
 
 /**
  * Connects this device. The first device claims the server with a new key; the others bring
- * the key in their link. Everything on this device then goes up to the server once.
+ * the key in their link; someone new brings an invite and gets their own space with a new key.
+ * Everything on this device then goes up to the server once.
  */
-export async function connect(address: string, key = newKey()): Promise<void> {
+export async function connect(address: string, key = newKey(), invite?: string): Promise<void> {
   const server = serverAddress(address)
   if (!server) throw new SyncError('That isn’t a web address. It should look like https://planner-sync.name.workers.dev')
   const config = { server, key }
   const status = await serverCall<{ app?: string }>(config, '/')
   if (status.app !== 'planner-sync') throw new SyncError('That address isn’t a planner server.')
   try {
-    await serverCall(config, '/claim', {})
+    await serverCall(config, '/claim', invite ? { invite } : {})
   } catch (error) {
+    if (error instanceof SyncError && error.status === 403) {
+      throw new SyncError('That invite has been used or has run out. Ask for a new one.', 403)
+    }
     if (error instanceof SyncError && error.status === 409) {
       throw new SyncError('This server is already connected to your other device. Open the link from “Add another device” there instead.', 409)
     }

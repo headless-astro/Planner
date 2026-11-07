@@ -17,7 +17,7 @@ describe('health summary', () => {
         ],
         '2026-11-07',
       ),
-    ).toEqual({ latest: { date: '2026-11-07', value: 79.4 }, change: 79.4 - 80, since: '2026-10-31' })
+    ).toMatchObject({ latest: { date: '2026-11-07', value: 79.4 }, change: 79.4 - 80, since: '2026-10-31', step: -0.6, previous: '2026-10-31' })
   })
 
   it("counts this week's workouts, doses and food rules so far", () => {

@@ -1,7 +1,7 @@
 // The planner's sync and reminder server (PLAN.md 11, 12.6): a Cloudflare Worker with a D1
 // database. GitHub Pages serves the app; this keeps the synced copy and sends the reminders.
-import { claim, isClaimed, requireKey } from './auth'
-import { CORS_HEADERS, HttpError, json, readJson, type Env } from './http'
+import { claim, createInvite, isClaimed, isOwner, requireKey } from './auth'
+import { CORS_HEADERS, HttpError, json, readJson, readJsonOrNothing, type Env } from './http'
 import { readDiary } from './letterboxd'
 import { sendTest, subscribe, unsubscribe, vapidKeys } from './push'
 import { runReminders } from './reminders'
@@ -13,27 +13,31 @@ async function route(request: Request, env: Env): Promise<Response> {
   const route = `${request.method} ${new URL(request.url).pathname}`
   switch (route) {
     case 'GET /':
-      return json({ app: 'planner-sync', version: 1, claimed: await isClaimed(env) })
+      return json({ app: 'planner-sync', version: 2, claimed: await isClaimed(env) })
     case 'GET /push/key':
       return json({ publicKey: (await vapidKeys(env)).publicKey })
     case 'POST /claim':
-      await claim(request, env)
+      await claim(request, env, await readJsonOrNothing(request))
       return json({ claimed: true })
   }
 
-  // Everything else needs the key.
-  await requireKey(request, env)
+  // Everything else needs the key, and works in that key's space.
+  const space = await requireKey(request, env)
   switch (route) {
+    case 'GET /me':
+      return json({ owner: await isOwner(env, space) })
+    case 'POST /invite':
+      return json(await createInvite(env, space))
     case 'POST /sync':
-      return json(await sync(env, await readJson(request)))
+      return json(await sync(env, space, await readJson(request)))
     case 'POST /push/subscribe':
-      await subscribe(request, env, await readJson(request))
+      await subscribe(request, env, space, await readJson(request))
       return json({ subscribed: true })
     case 'POST /push/unsubscribe':
-      await unsubscribe(env, await readJson(request))
+      await unsubscribe(env, space, await readJson(request))
       return json({ subscribed: false })
     case 'POST /push/test':
-      return json({ result: await sendTest(env, await readJson(request)) })
+      return json({ result: await sendTest(env, space, await readJson(request)) })
     case 'POST /letterboxd':
       return json(await readDiary(await readJson(request)))
   }

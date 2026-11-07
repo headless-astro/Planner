@@ -14,8 +14,9 @@ export const DEFAULT_TIMES: ReminderTimes = { morning: '12:00', night: '00:00' }
 /** A late or skipped run still sends, up to this many minutes after the time. */
 export const WINDOW_MINUTES = 30
 
-export async function reminderTimes(env: Env): Promise<ReminderTimes> {
-  const data = await env.DB.prepare("SELECT data FROM records WHERE tbl = 'settings' AND id = 'reminders'").first<string>('data')
+/** The reminder times set in one space's app. */
+export async function reminderTimes(env: Env, space: string): Promise<ReminderTimes> {
+  const data = await env.DB.prepare("SELECT data FROM records WHERE space = ?1 AND tbl = 'settings' AND id = 'reminders'").bind(space).first<string>('data')
   if (!data) return DEFAULT_TIMES
   const record = JSON.parse(data) as { value?: Partial<ReminderTimes>; deleted?: boolean }
   return record.deleted ? DEFAULT_TIMES : { ...DEFAULT_TIMES, ...record.value }
@@ -68,10 +69,12 @@ export function dueReminders(times: ReminderTimes, clock: LocalClock): { kind: k
 
 /** Sends the reminders that are due. Returns how many went out. */
 export async function runReminders(env: Env, now: Date): Promise<number> {
-  const times = await reminderTimes(env)
-  const { results } = await env.DB.prepare('SELECT endpoint, timezone FROM subscriptions').all<{ endpoint: string; timezone: string }>()
+  const { results } = await env.DB.prepare('SELECT endpoint, timezone, space FROM subscriptions').all<{ endpoint: string; timezone: string; space: string }>()
+  const timesBySpace = new Map<string, ReminderTimes>()
   let sent = 0
-  for (const { endpoint, timezone } of results) {
+  for (const { endpoint, timezone, space } of results) {
+    if (!timesBySpace.has(space)) timesBySpace.set(space, await reminderTimes(env, space))
+    const times = timesBySpace.get(space) as ReminderTimes
     let clock: LocalClock
     try {
       clock = localClock(now, timezone)

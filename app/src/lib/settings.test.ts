@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { parseDate } from './dates'
 import { db } from './db'
-import { buildDay, daysWith } from './plan'
+import { buildDay } from './plan'
 import { ensureSeeded, getAppearance, getFoodRules, getWeek, resetWeek, updateAppearance, updateFoodRules, updateWeekDay } from './repo'
 import { DEFAULT_FOOD_RULES, WEEK_TEMPLATE } from './setup'
 
@@ -18,12 +18,12 @@ describe('the week (F30)', () => {
     await updateWeekDay(6, { foodRules: true })
     const week = await getWeek()
     expect(week[1]).toMatchObject({ morning: 'tech', workout: 'cardio', spanish: null })
-    expect(daysWith(week, 'tech')).toEqual([0, 1, 2])
 
-    // Tuesday 3 Nov is built from the changed week.
-    const tuesday = buildDay(parseDate('2026-11-03'), { week })
-    expect(tuesday.morning.map((item) => item.id)).toContain('study')
-    expect(tuesday.anytime.find((item) => item.id === 'spanish')).toBeUndefined()
+    // Tuesday 3 Nov is built from the changed week: tech study's track in the morning, no Spanish practice.
+    const tracks = [{ id: 'track-tech', name: 'Tech study', start: '2026-11-02', weeks: 0, ongoing: true, weekdays: [], focus: [] }]
+    const tuesday = buildDay(parseDate('2026-11-03'), { week, tracks })
+    expect(tuesday.morning.map((item) => item.id)).toContain('act:tech')
+    expect(tuesday.anytime.find((item) => item.id.startsWith('act:spanish'))).toBeUndefined()
     expect(buildDay(parseDate('2026-11-08'), { week }).foodRules).toBe(true)
 
     await resetWeek()

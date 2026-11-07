@@ -1,16 +1,16 @@
 <script lang="ts">
   import { nearestDot, weightChartLayout, type ChartPoint } from '../lib/chart'
   import { formatDate, formatShort, parseDate } from '../lib/dates'
-  import { WEEKLY_LOSS_GOAL } from '../lib/setup'
 
   // One series (weight) and a reference line (goal pace), so no legend box: the key below
   // names both, and the goal line is dashed and labelled so it never relies on colour.
-  let { points }: { points: ChartPoint[] } = $props()
+  // The goal pace comes from your targets (F64); null draws no goal line.
+  let { points, pace = null }: { points: ChartPoint[]; pace?: number | null } = $props()
 
   let width = $state(0)
   let active = $state<number | null>(null)
 
-  const layout = $derived(points.length >= 2 ? weightChartLayout(points, Math.max(width, 280), WEEKLY_LOSS_GOAL) : null)
+  const layout = $derived(points.length >= 2 ? weightChartLayout(points, Math.max(width, 280), pace ?? 0) : null)
   const shown = $derived(layout && active !== null ? layout.dots[active] : null)
   const last = $derived(layout ? layout.dots[layout.dots.length - 1] : null)
   const kg = (value: number) => `${value.toFixed(1)} kg`
@@ -37,7 +37,9 @@
 <div class="card chart" bind:clientWidth={width}>
   <div class="chart-key" aria-hidden="true">
     <span><svg width="20" height="8"><line class="chart-line" x1="1" y1="4" x2="19" y2="4" /></svg>Weight</span>
-    <span><svg width="20" height="8"><line class="chart-goal" x1="1" y1="4" x2="19" y2="4" /></svg>Goal pace, {WEEKLY_LOSS_GOAL} kg a week</span>
+    {#if pace !== null}
+      <span><svg width="20" height="8"><line class="chart-goal" x1="1" y1="4" x2="19" y2="4" /></svg>Goal pace, {pace} kg a week</span>
+    {/if}
   </div>
 
   {#if layout && last}
@@ -65,10 +67,12 @@
           <text class="chart-label" x={label.x} y={layout.height - 8} text-anchor={label.anchor}>{label.text}</text>
         {/each}
 
-        <line class="chart-goal" x1={layout.goal.x1} y1={layout.goal.y1} x2={layout.goal.x2} y2={layout.goal.y2} />
-        <!-- When the weight is on pace the two end labels would collide; the key above still names the line. -->
-        {#if Math.abs(layout.goal.y2 - last.y) >= 16}
-          <text class="chart-label" x={layout.goal.x2 + 8} y={layout.goal.y2} dominant-baseline="middle">Goal pace</text>
+        {#if pace !== null}
+          <line class="chart-goal" x1={layout.goal.x1} y1={layout.goal.y1} x2={layout.goal.x2} y2={layout.goal.y2} />
+          <!-- When the weight is on pace the two end labels would collide; the key above still names the line. -->
+          {#if Math.abs(layout.goal.y2 - last.y) >= 16}
+            <text class="chart-label" x={layout.goal.x2 + 8} y={layout.goal.y2} dominant-baseline="middle">Goal pace</text>
+          {/if}
         {/if}
 
         <path class="chart-line" d={layout.path} />
@@ -89,7 +93,9 @@
         <div class="tooltip" style:left="{shown.x}px" style:top="{shown.y}px">
           <strong>{kg(shown.value)}</strong>
           <span class="muted">{formatShort(parseDate(shown.date))}</span>
-          <span class="muted"><svg width="14" height="6" aria-hidden="true"><line class="chart-goal" x1="0" y1="3" x2="14" y2="3" /></svg> goal {kg(shown.goal)}</span>
+          {#if pace !== null}
+            <span class="muted"><svg width="14" height="6" aria-hidden="true"><line class="chart-goal" x1="0" y1="3" x2="14" y2="3" /></svg> goal {kg(shown.goal)}</span>
+          {/if}
         </div>
       {/if}
     </div>
@@ -101,10 +107,10 @@
     <details class="steps chart-table">
       <summary>Show as a table</summary>
       <table>
-        <thead><tr><th>Date</th><th>kg</th><th>Goal pace</th></tr></thead>
+        <thead><tr><th>Date</th><th>kg</th>{#if pace !== null}<th>Goal pace</th>{/if}</tr></thead>
         <tbody>
           {#each [...layout.dots].reverse() as dot (dot.date)}
-            <tr><td>{formatDate(parseDate(dot.date))}</td><td>{dot.value.toFixed(1)}</td><td>{dot.goal.toFixed(1)}</td></tr>
+            <tr><td>{formatDate(parseDate(dot.date))}</td><td>{dot.value.toFixed(1)}</td>{#if pace !== null}<td>{dot.goal.toFixed(1)}</td>{/if}</tr>
           {/each}
         </tbody>
       </table>

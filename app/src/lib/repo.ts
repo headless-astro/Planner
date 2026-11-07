@@ -1,7 +1,7 @@
 // Reading and writing the planner's daily data on this device: the starting setup, day
 // values (ticks, ratings, diary), snacks, to-dos, measurements, settings and history.
-import { isCrunchDay, listCrunches } from './crunch'
-import { addDays, parseDate, toISODate } from './dates'
+import { DEFAULT_EXERCISE, type BlockId, type ExerciseBlock, type ExercisePlan } from './exercise'
+import { ALL_FEATURES, type Features } from './features'
 import { db, type Dose, type Entry, type Habit, type Measurement, type Snack, type SnackDef, type Task } from './db'
 import {
   DEFAULT_DOSES,
@@ -106,6 +106,16 @@ export async function ensureSeeded(): Promise<void> {
       await db.goals.bulkPut(DEFAULT_GOALS.map((goal, order) => ({ ...goal, notes: '', reached: null, order, updatedAt: 0 })))
       await db.meta.put({ id: 'seeded-m5', value: now() })
     }
+    // The skin routine was built in; now it's a habit like the rest, under "Also today". Its
+    // id keeps every tick it already had, and its target comes along.
+    if (!(await db.meta.get('seeded-skin'))) {
+      if (!(await db.habits.get('skin'))) {
+        const targets = await getSetting<{ skin?: unknown }>('targets', {})
+        const weeklyTarget = typeof targets.skin === 'number' ? targets.skin : 7
+        await db.habits.put({ id: 'skin', label: 'Skin routine', weeklyTarget, order: -1, updatedAt: 0 })
+      }
+      await db.meta.put({ id: 'seeded-skin', value: now() })
+    }
   })
   // M7: projects live in Lists.
   await moveProjectsToLists()
@@ -150,11 +160,64 @@ export const getTargets = () => getSetting<Targets>('targets', DEFAULT_TARGETS)
 export const getReminders = () => getSetting<Reminders>('reminders', DEFAULT_REMINDERS)
 
 export async function updateTargets(changes: Partial<Targets>): Promise<void> {
-  await db.settings.put({ id: 'targets', value: { ...(await getTargets()), ...changes }, updatedAt: now() })
+  await db.transaction('rw', db.settings, async () => {
+    await db.settings.put({ id: 'targets', value: { ...(await getTargets()), ...changes }, updatedAt: now() })
+  })
 }
 
 export async function updateReminders(changes: Partial<Reminders>): Promise<void> {
   await db.settings.put({ id: 'reminders', value: { ...(await getReminders()), ...changes }, updatedAt: now() })
+}
+
+// ── Exercise blocks (F59) ──
+
+export async function getExercise(): Promise<ExercisePlan> {
+  const plan = await getSetting<ExercisePlan>('exercise', DEFAULT_EXERCISE)
+  // Blocks merge over the suggestions too, so a block that was never edited keeps them.
+  return { ...plan, blocks: { ...DEFAULT_EXERCISE.blocks, ...plan.blocks } }
+}
+
+async function saveExercise(plan: ExercisePlan): Promise<void> {
+  // A plain copy: values edited on screen can arrive wrapped, and the database only stores plain data.
+  await db.settings.put({ id: 'exercise', value: JSON.parse(JSON.stringify(plan)) as ExercisePlan, updatedAt: now() })
+}
+
+export async function updateBlock(id: BlockId, changes: Partial<ExerciseBlock>): Promise<void> {
+  await db.transaction('rw', db.settings, async () => {
+    const plan = await getExercise()
+    await saveExercise({ ...plan, blocks: { ...plan.blocks, [id]: { ...plan.blocks[id], ...changes } } })
+  })
+}
+
+/** Makes a block the active one, starting at week 1 on the given day. */
+export async function startBlock(id: BlockId, date: string): Promise<void> {
+  await saveExercise({ ...(await getExercise()), active: id, start: date })
+}
+
+/** Puts a block back to my suggestion. */
+export async function resetBlock(id: BlockId): Promise<void> {
+  await updateBlock(id, DEFAULT_EXERCISE.blocks[id])
+}
+
+// ── What you use (F63) ──
+
+/** Merged over everything on, so devices from before (and parts added later) have them on. */
+export const getFeatures = () => getSetting<Features>('features', ALL_FEATURES)
+
+export async function updateFeatures(changes: Partial<Features>): Promise<void> {
+  await db.transaction('rw', db.settings, async () => {
+    await db.settings.put({ id: 'features', value: { ...(await getFeatures()), ...changes }, updatedAt: now() })
+  })
+}
+
+/** What's tracked beyond the basics (F56): period days are off unless turned on. */
+export interface Tracking {
+  periods: boolean
+}
+export const getTracking = () => getSetting<Tracking>('tracking', { periods: false })
+
+export async function updateTracking(changes: Partial<Tracking>): Promise<void> {
+  await db.settings.put({ id: 'tracking', value: { ...(await getTracking()), ...changes }, updatedAt: now() })
 }
 
 /** Colours (F28). They sync, so both devices look the same. */
@@ -181,9 +244,13 @@ export async function getWeek(): Promise<DayTemplate[]> {
 }
 
 export async function updateWeekDay(index: number, changes: Partial<DayTemplate>): Promise<void> {
-  const days = await getWeek()
-  days[index] = { ...days[index], ...changes }
-  await db.settings.put({ id: 'week', value: { days }, updatedAt: now() })
+  // One change at a time, so two quick edits can't overwrite each other.
+  await db.transaction('rw', db.settings, async () => {
+    const days = await getWeek()
+    days[index] = { ...days[index], ...changes }
+    // A plain copy: activities edited on screen can arrive wrapped, and the database only stores plain data.
+    await db.settings.put({ id: 'week', value: { days: JSON.parse(JSON.stringify(days)) as DayTemplate[] }, updatedAt: now() })
+  })
 }
 
 export const resetWeek = () => softDelete(db.settings, 'week')
@@ -224,7 +291,7 @@ export async function getEntriesBetween(from: string, to: string): Promise<Entry
 
 // ── Snacks eaten ──
 
-export async function addSnack(date: string, name: string, kcal: number): Promise<void> {
+export async function addSnack(date: string, name: string, kcal: number | null): Promise<void> {
   await db.snacks.put({ id: newId(), date, name, kcal, updatedAt: now() })
 }
 
@@ -287,60 +354,6 @@ export async function getDayMeasurements(date: string): Promise<DayMeasurements>
 /** Oldest first. */
 export async function getMeasurements(kind: MeasurementKind): Promise<Measurement[]> {
   return alive(await db.measurements.where('kind').equals(kind).toArray()).sort((a, b) => a.date.localeCompare(b.date))
-}
-
-// ── History ──
-
-export interface DaySummary {
-  date: string
-  ticks: number
-  work: string | null
-  rules: string | null
-  snackKcal: number
-  weight: number | null
-  todosDone: number
-  routinesDone: number
-  wrote: boolean
-  crunch: boolean
-}
-
-/** One summary per day from `to` back to `from`, newest first. Empty days are included. */
-export async function getDaySummaries(from: string, to: string): Promise<DaySummary[]> {
-  const [entries, snacks, measurements, finished, routineLogs, crunches] = await Promise.all([
-    getEntriesBetween(from, to),
-    db.snacks.where('date').between(from, to, true, true).toArray(),
-    db.measurements.where('date').between(from, to, true, true).toArray(),
-    db.tasks.where('doneDate').between(from, to, true, true).toArray(),
-    db.routineLogs.where('date').between(from, to, true, true).toArray(),
-    listCrunches(),
-  ])
-  const liveSnacks = alive(snacks)
-  const liveMeasurements = alive(measurements)
-  const liveRoutineLogs = alive(routineLogs)
-  const doneTasks = alive(finished).filter((task) => task.done)
-
-  const days: DaySummary[] = []
-  for (let day = parseDate(to); toISODate(day) >= from; day = addDays(day, -1)) {
-    const date = toISODate(day)
-    const values = new Map(entries.filter((entry) => entry.date === date).map((entry) => [entry.key, entry.value]))
-    const text = (key: string) => {
-      const value = values.get(key)
-      return typeof value === 'string' ? value : null
-    }
-    days.push({
-      date,
-      ticks: [...values].filter(([key, value]) => key.startsWith('tick:') && value === true).length,
-      work: text('work'),
-      rules: text('rules'),
-      snackKcal: liveSnacks.filter((snack) => snack.date === date).reduce((sum, snack) => sum + snack.kcal, 0),
-      weight: liveMeasurements.find((row) => row.date === date && row.kind === 'weight')?.value ?? null,
-      todosDone: doneTasks.filter((task) => task.doneDate === date).length,
-      routinesDone: liveRoutineLogs.filter((log) => log.date === date).length,
-      wrote: Boolean(text('diary') || text('note')),
-      crunch: isCrunchDay(crunches, date),
-    })
-  }
-  return days
 }
 
 // ── Device-only bookkeeping ──

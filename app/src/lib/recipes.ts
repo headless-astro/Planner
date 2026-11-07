@@ -5,7 +5,7 @@ import { alive, listOrdered, newId, nextOrder, now, softDelete, update } from '.
 
 export const listRecipes = () => listOrdered(db.recipes)
 
-export async function addRecipe(name: string, meal: string): Promise<void> {
+export async function addRecipe(name: string, meal: string, wantToTry = false): Promise<void> {
   await db.recipes.put({
     id: newId(),
     name,
@@ -19,6 +19,7 @@ export async function addRecipe(name: string, meal: string): Promise<void> {
     enjoyment: null,
     order: await nextOrder(db.recipes),
     updatedAt: now(),
+    ...(wantToTry ? { wantToTry: true } : {}),
   })
 }
 
@@ -26,6 +27,14 @@ export type RecipeChanges = Partial<Omit<Recipe, 'id' | 'updatedAt' | 'deleted' 
 
 export const updateRecipe = (id: string, changes: RecipeChanges) => update(db.recipes, id, changes)
 export const deleteRecipe = (id: string) => softDelete(db.recipes, id)
+
+/** The lines of a recipe's ingredients, without list marks ("- 2 onions" → "2 onions"). */
+export function ingredientLines(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/^\s*[-•*–]\s*/, '').trim())
+    .filter(Boolean)
+}
 
 /** Newest first. */
 export async function listCooked(): Promise<CookedLog[]> {
@@ -46,4 +55,7 @@ export async function setCooked(recipeId: string, date: string, done: boolean): 
   }
   await db.cookedLogs.put({ id, recipeId, date, updatedAt: now() })
   await setEntry(date, 'tick:cooked', true)
+  // Cooking one you wanted to try moves it to Cooked (F61).
+  const recipe = await db.recipes.get(recipeId)
+  if (recipe?.wantToTry) await update(db.recipes, recipeId, { wantToTry: false })
 }

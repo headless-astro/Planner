@@ -50,11 +50,12 @@ function parse(body: unknown): { cursor: number; changes: Change[] } {
   }
 }
 
-export async function sync(env: Env, body: unknown): Promise<SyncResponse> {
+/** Syncs within one space: each person's records are kept apart (D72). */
+export async function sync(env: Env, space: string, body: unknown): Promise<SyncResponse> {
   const { cursor, changes } = parse(body)
 
   // A cursor past the newest change means the database was reset since the device last synced.
-  const latest = (await env.DB.prepare('SELECT COALESCE(MAX(seq), 0) AS latest FROM records').first<number>('latest')) ?? 0
+  const latest = (await env.DB.prepare('SELECT COALESCE(MAX(seq), 0) AS latest FROM records WHERE space = ?1').bind(space).first<number>('latest')) ?? 0
   if (cursor > latest) return { cursor: 0, changes: [], more: false, accepted: 0, reset: true }
 
   let accepted = 0
@@ -65,21 +66,21 @@ export async function sync(env: Env, body: unknown): Promise<SyncResponse> {
       return { t: table, i: record.id, u: record.updatedAt, d: data }
     })
     // One statement for the whole batch. Each accepted change gets a sequence number above
-    // every earlier one, so devices pick it up after their cursor.
+    // every earlier one (across all spaces), so devices pick it up after their cursor.
     const result = await env.DB.prepare(
-      `INSERT INTO records (tbl, id, updated_at, seq, data)
-       SELECT value ->> '$.t', value ->> '$.i', value ->> '$.u', (SELECT COALESCE(MAX(seq), 0) FROM records) + key + 1, value ->> '$.d'
+      `INSERT INTO records (space, tbl, id, updated_at, seq, data)
+       SELECT ?2, value ->> '$.t', value ->> '$.i', value ->> '$.u', (SELECT COALESCE(MAX(seq), 0) FROM records) + key + 1, value ->> '$.d'
        FROM json_each(?1) WHERE true
-       ON CONFLICT (tbl, id) DO UPDATE SET updated_at = excluded.updated_at, seq = excluded.seq, data = excluded.data
+       ON CONFLICT (space, tbl, id) DO UPDATE SET updated_at = excluded.updated_at, seq = excluded.seq, data = excluded.data
        WHERE excluded.updated_at > records.updated_at`,
     )
-      .bind(JSON.stringify(rows))
+      .bind(JSON.stringify(rows), space)
       .run()
     accepted = result.meta.changes
   }
 
-  const { results } = await env.DB.prepare('SELECT tbl, seq, data FROM records WHERE seq > ?1 ORDER BY seq LIMIT ?2')
-    .bind(cursor, PAGE_SIZE + 1)
+  const { results } = await env.DB.prepare('SELECT tbl, seq, data FROM records WHERE space = ?3 AND seq > ?1 ORDER BY seq LIMIT ?2')
+    .bind(cursor, PAGE_SIZE + 1, space)
     .all<{ tbl: string; seq: number; data: string }>()
   const page = results.slice(0, PAGE_SIZE)
   return {

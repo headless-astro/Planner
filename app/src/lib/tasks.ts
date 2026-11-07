@@ -6,6 +6,9 @@ import { alive, byOrder, listOrdered, newId, nextOrder, now, reorder, softDelete
 
 export const listLists = () => listOrdered(db.lists)
 
+/** Every task that isn't deleted: list tasks, subtasks and to-dos. */
+export const listAllTasks = async () => alive(await db.tasks.toArray())
+
 /** Creates a list and returns its id. */
 export async function addList(name: string): Promise<string> {
   const id = newId()
@@ -39,9 +42,10 @@ export async function getListTasks(listId: string): Promise<ListTasks> {
   const topLevel = tasks.filter((task) => task.parentId === null)
   const subtasksOf = (id: string) => tasks.filter((task) => task.parentId === id).sort(byOrder)
   return {
+    // Tasks with a deadline come first, soonest first; the rest keep your order (F49).
     open: topLevel
       .filter((task) => !task.done)
-      .sort(byOrder)
+      .sort((a, b) => (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0) || byOrder(a, b))
       .map((task) => ({ ...task, subtasks: subtasksOf(task.id) })),
     archived: topLevel.filter((task) => task.done).sort((a, b) => (b.doneDate ?? '').localeCompare(a.doneDate ?? '')),
   }

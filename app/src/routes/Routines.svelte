@@ -1,4 +1,6 @@
 <script lang="ts">
+  import AddToggle from '../components/AddToggle.svelte'
+  import Icon from '../components/Icon.svelte'
   import { formatShort, parseDate } from '../lib/dates'
   import { live } from '../lib/live.svelte'
   import { addRoutine, deleteRoutine, dueText, getRoutineStatuses, setRoutineDone, updateRoutine, type RoutineStatus } from '../lib/routines'
@@ -14,9 +16,61 @@
     return [...byArea].map(([area, items]) => ({ area, items }))
   })
 
+  // ── Tabs (F50): Due first, then each area. The last one opened is kept on this device. ──
+  const DUE = 'due'
+  const TAB_KEY = 'routines-tab'
+  const isDue = (status: RoutineStatus) => !status.doneThatDay && status.dueIn !== null && status.dueIn <= 0
+
+  function savedTab(): string {
+    try {
+      return localStorage.getItem(TAB_KEY) ?? DUE
+    } catch {
+      return DUE
+    }
+  }
+
+  let picked = $state(savedTab())
+  // A remembered area that's gone (renamed or emptied) falls back to Due.
+  const tab = $derived(picked === DUE || groups.some((group) => group.area === picked) ? picked : DUE)
+
+  function pick(value: string) {
+    picked = value
+    try {
+      localStorage.setItem(TAB_KEY, value)
+    } catch {
+      // Private windows can refuse storage; the tab still changes.
+    }
+  }
+
+  /** Due today or late, most late first; ones done today stay at the end so Undo is at hand. */
+  const dueItems = $derived(
+    statuses.current
+      .filter((status) => isDue(status) || status.doneThatDay)
+      .sort((a, b) => Number(a.doneThatDay) - Number(b.doneThatDay) || (a.dueIn ?? 0) - (b.dueIn ?? 0)),
+  )
+  const dueCount = $derived(statuses.current.filter(isDue).length)
+  const shown = $derived(tab === DUE ? dueItems : (groups.find((group) => group.area === tab)?.items ?? []))
+
+  // When a routine is due is what matters most, so it gets a coloured pill; editing hides behind a pencil.
+  function dueTone(status: RoutineStatus): 'done' | 'late' | 'today' | 'soon' | 'later' | 'new' {
+    if (status.doneThatDay) return 'done'
+    if (status.dueIn === null) return 'new'
+    if (status.dueIn < 0) return 'late'
+    if (status.dueIn === 0) return 'today'
+    return status.dueIn <= 2 ? 'soon' : 'later'
+  }
+  let editing = $state<string | null>(null)
+
+  // ── Adding (F50): behind +, with the area picked from yours or a new one. ──
+  const NEW_AREA = '__new-area__'
+  let adding = $state(false)
   let newName = $state('')
   let newInterval = $state<number | null>(7)
+  let newAreaChoice = $state('')
   let newArea = $state('')
+  const areaChoice = $derived(
+    newAreaChoice || (tab !== DUE ? tab : (groups[0]?.area ?? NEW_AREA)),
+  )
   let doneOn = $state<Record<string, string>>({})
 
   const confirmDelete = (name: string) => window.confirm(`Delete "${name}"?`)
@@ -34,9 +88,14 @@
     const name = newName.trim()
     const interval = Math.round(Number(newInterval))
     if (!name || !Number.isFinite(interval) || interval < 1) return
-    await addRoutine(name, newArea.trim() || 'Other', interval)
+    const area = areaChoice === NEW_AREA ? newArea.trim() : areaChoice
+    if (!area) return
+    await addRoutine(name, area, interval)
     newName = ''
     newArea = ''
+    newAreaChoice = ''
+    adding = false
+    pick(area)
   }
 
   async function saveDoneOn(event: SubmitEvent, routineId: string) {
@@ -48,37 +107,82 @@
   }
 </script>
 
-<header>
-  <h1>Routines</h1>
-  <p class="date">Things that repeat every few days, counted from the last time you did them.</p>
+<header class="with-add">
+  <div>
+    <h1>Routines</h1>
+    <p class="date">Things that repeat every few days, counted from the last time you did them.</p>
+  </div>
+  <AddToggle bind:open={adding} label="Add a routine" />
 </header>
 
-{#each groups as group (group.area)}
+{#if adding}
   <section>
-    <h2>{group.area}</h2>
+    <h2>New routine</h2>
+    <form class="edit-panel card padded" onsubmit={submit}>
+      <label>Name <input type="text" bind:value={newName} placeholder="e.g. Water the plants" aria-label="New routine name" /></label>
+      <label class="inline">
+        Every
+        <input type="number" min="1" bind:value={newInterval} aria-label="Every how many days" />
+        days
+      </label>
+      <label>
+        Area
+        <select value={areaChoice} onchange={(event) => (newAreaChoice = event.currentTarget.value)} aria-label="Area">
+          {#each groups as group (group.area)}<option value={group.area}>{group.area}</option>{/each}
+          <option value={NEW_AREA}>New area…</option>
+        </select>
+      </label>
+      {#if areaChoice === NEW_AREA}
+        <label>New area <input type="text" bind:value={newArea} placeholder="e.g. Garden" aria-label="New area name" /></label>
+      {/if}
+      <button type="submit" class="button">Add routine</button>
+    </form>
+    <p class="muted small">Routines in the {CHORES_AREA} area also tick Chores for the day.</p>
+  </section>
+{/if}
+
+<div class="chips list-tabs" role="group" aria-label="Areas">
+  <button type="button" class="chip" aria-pressed={tab === DUE} onclick={() => pick(DUE)}>Due{dueCount ? ` ${dueCount}` : ''}</button>
+  {#each groups as group (group.area)}
+    {@const count = group.items.filter(isDue).length}
+    <button type="button" class="chip" aria-pressed={tab === group.area} onclick={() => pick(group.area)}>{group.area}{count ? ` ${count}` : ''}</button>
+  {/each}
+</div>
+
+<section class="area-list">
+  {#if shown.length}
     <ul class="list">
-      {#each group.items as status (status.routine.id)}
+      {#each shown as status (status.routine.id)}
         <li class="row">
           <div class="routine-head">
             <span class="text grow">
               <span class="label">{status.routine.name}</span>
-              <span class="detail" class:late={status.dueIn !== null && status.dueIn < 0 && !status.doneThatDay}>
-                every {plural(status.routine.intervalDays, 'day')} · {dueText(status)}
+              <span class="due-pill {dueTone(status)}">{status.doneThatDay && status.dueIn !== null ? `done · next in ${plural(status.dueIn, 'day')}` : dueText(status)}</span>
+              <span class="detail">
+                {tab === DUE ? `${status.routine.area} · ` : ''}every {plural(status.routine.intervalDays, 'day')} · {history(status)}
               </span>
-              <span class="detail">{history(status)}</span>
             </span>
-            <button
-              type="button"
-              class="button small"
-              class:secondary={status.doneThatDay}
-              onclick={() => setRoutineDone(status.routine.id, today, !status.doneThatDay)}
-            >
-              {status.doneThatDay ? 'Undo' : 'Done today'}
-            </button>
+            <div class="routine-actions">
+              <button
+                type="button"
+                class="button small"
+                class:secondary={status.doneThatDay}
+                onclick={() => setRoutineDone(status.routine.id, today, !status.doneThatDay)}
+              >
+                {status.doneThatDay ? 'Undo' : 'Done today'}
+              </button>
+              <button
+                type="button"
+                class="icon-button pencil"
+                aria-label="Edit {status.routine.name}"
+                title="Edit"
+                aria-expanded={editing === status.routine.id}
+                onclick={() => (editing = editing === status.routine.id ? null : status.routine.id)}><Icon name="pencil" /></button
+              >
+            </div>
           </div>
-          <details class="steps">
-            <summary>Edit</summary>
-            <div class="edit-panel">
+          {#if editing === status.routine.id}
+            <div class="edit-panel routine-edit">
               <form class="add-row" onsubmit={(event) => saveDoneOn(event, status.routine.id)}>
                 <label>
                   Done on
@@ -130,28 +234,18 @@
                 >Delete routine</button
               >
             </div>
-          </details>
+          {/if}
         </li>
       {/each}
     </ul>
-  </section>
-{/each}
+  {:else if tab === DUE}
+    <p class="muted small">Nothing due or late right now.</p>
+  {:else}
+    <p class="muted small">No routines in {tab}.</p>
+  {/if}
+</section>
 
 <datalist id="routine-areas">
   {#each groups as group (group.area)}<option value={group.area}></option>{/each}
 </datalist>
 
-<section>
-  <h2>New routine</h2>
-  <form class="add-row" onsubmit={submit}>
-    <input class="grow" type="text" bind:value={newName} placeholder="Name" aria-label="New routine name" />
-    <label class="inline">
-      every
-      <input type="number" min="1" bind:value={newInterval} aria-label="Every how many days" />
-      days
-    </label>
-    <input type="text" list="routine-areas" bind:value={newArea} placeholder="Area" aria-label="Area" />
-    <button type="submit" class="button">Add</button>
-  </form>
-  <p class="muted small">Routines in the {CHORES_AREA} area also tick Chores for the day.</p>
-</section>

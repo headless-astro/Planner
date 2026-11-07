@@ -3,6 +3,12 @@
   // text colour. Only the ones listed here end up in the app.
   import barbell from '@phosphor-icons/core/assets/bold/barbell-bold.svg?raw'
   import books from '@phosphor-icons/core/assets/bold/books-bold.svg?raw'
+  import caretLeft from '@phosphor-icons/core/assets/bold/caret-left-bold.svg?raw'
+  import caretRight from '@phosphor-icons/core/assets/bold/caret-right-bold.svg?raw'
+  import chartLineUp from '@phosphor-icons/core/assets/bold/chart-line-up-bold.svg?raw'
+  import drop from '@phosphor-icons/core/assets/bold/drop-bold.svg?raw'
+  import dropFill from '@phosphor-icons/core/assets/fill/drop-fill.svg?raw'
+  import calendarCheck from '@phosphor-icons/core/assets/bold/calendar-check-bold.svg?raw'
   import calendarDots from '@phosphor-icons/core/assets/bold/calendar-dots-bold.svg?raw'
   import calendarHeart from '@phosphor-icons/core/assets/bold/calendar-heart-bold.svg?raw'
   import clockCountdown from '@phosphor-icons/core/assets/bold/clock-countdown-bold.svg?raw'
@@ -15,6 +21,8 @@
   import minus from '@phosphor-icons/core/assets/bold/minus-bold.svg?raw'
   import notebook from '@phosphor-icons/core/assets/bold/notebook-bold.svg?raw'
   import notepad from '@phosphor-icons/core/assets/bold/notepad-bold.svg?raw'
+  import pencil from '@phosphor-icons/core/assets/bold/pencil-simple-bold.svg?raw'
+  import plus from '@phosphor-icons/core/assets/bold/plus-bold.svg?raw'
   import plusCircle from '@phosphor-icons/core/assets/bold/plus-circle-bold.svg?raw'
   import thumbsDown from '@phosphor-icons/core/assets/bold/thumbs-down-bold.svg?raw'
   import thumbsUp from '@phosphor-icons/core/assets/bold/thumbs-up-bold.svg?raw'
@@ -23,6 +31,12 @@
   const ICONS = {
     barbell,
     books,
+    'calendar-check': calendarCheck,
+    'caret-left': caretLeft,
+    'caret-right': caretRight,
+    'chart-line-up': chartLineUp,
+    drop,
+    'drop-fill': dropFill,
     'calendar-dots': calendarDots,
     'calendar-heart': calendarHeart,
     'clock-countdown': clockCountdown,
@@ -35,6 +49,8 @@
     minus,
     notebook,
     notepad,
+    pencil,
+    plus,
     'plus-circle': plusCircle,
     'thumbs-down': thumbsDown,
     'thumbs-up': thumbsUp,

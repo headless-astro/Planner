@@ -1,12 +1,13 @@
 <script lang="ts">
+  import Icon from '../components/Icon.svelte'
+  import { DEFAULT_EXERCISE } from '../lib/exercise'
+  import { ALL_FEATURES } from '../lib/features'
   import { countCrunchDays, endCrunch, isCrunchDay, listCrunches, startCrunch } from '../lib/crunch'
   import { addDays, formatShort, parseDate, toISODate, weekStart } from '../lib/dates'
-  import type { Crunch, Dose, DrawingArea, DrawingLog, Entry, Habit, Snack, SnackDef, SpanishLog, Task, Topic, Track, TrackSession } from '../lib/db'
-  import { listDrawingAreas, listDrawingLogs, saveDrawingLog, setDrawingSession } from '../lib/drawing'
+  import type { Crunch, Dose, Entry, Habit, Task, Topic, Track, TrackSession } from '../lib/db'
   import { live } from '../lib/live.svelte'
-  import { TRACK_ITEM_PREFIX, buildDay, type PlanItem } from '../lib/plan'
+  import { buildDay, type PlanItem } from '../lib/plan'
   import {
-    addSnack,
     addTodo,
     clearEntry,
     deleteTodo,
@@ -14,15 +15,15 @@
     getDayValues,
     getEntriesBetween,
     getFoodRules,
-    getSnacks,
+    getExercise,
+    getFeatures,
     getTargets,
+    getTracking,
     getTodos,
     getWeek,
     listDoses,
     listHabits,
-    listSnackDefs,
     moveTodo,
-    removeSnack,
     setEntry,
     setMeasurement,
     setTodoDone,
@@ -31,13 +32,10 @@
     type DayValues,
   } from '../lib/repo'
   import { dueText, getRoutineStatuses, setRoutineDone, type RoutineStatus } from '../lib/routines'
-  import { DEFAULT_FOOD_RULES, DEFAULT_SPANISH, DEFAULT_TARGETS, type DayTemplate } from '../lib/setup'
-  import { getSpanishSettings, listSpanishLogs, saveBookSession, saveDayLog, setBookSession, type DailyKind } from '../lib/spanish'
-  import { listTopics, setTopicDone } from '../lib/study'
+  import { DEFAULT_FOOD_RULES, DEFAULT_TARGETS, type DayTemplate } from '../lib/setup'
   import { dueLabel, getDueTasks, setTaskDone, type DueTask } from '../lib/tasks'
-  import { trackSetup } from '../lib/trackSetup'
-  import { getDaySessions, listTracks, saveSession, setSession } from '../lib/tracks'
-  import { weekCounters } from '../lib/week'
+  import { listAllSteps, listSessions, listTracks, saveSession, sessionFor, setActivityDone, stepsOf } from '../lib/tracks'
+  import { EATING_CHOICES, countText, weekCounters } from '../lib/week'
 
   let { date, isToday = false }: { date: string; isToday?: boolean } = $props()
 
@@ -50,19 +48,22 @@
   // Read live from the database on this device, so the screen updates the moment anything is saved.
   const doses = live(() => listDoses, [] as Dose[])
   const habits = live(() => listHabits, [] as Habit[])
-  const snackDefs = live(() => listSnackDefs, [] as SnackDef[])
   const targets = live(() => getTargets, DEFAULT_TARGETS)
   // Null until loaded, so the day isn't laid out from the starting week for a moment.
   const week = live<DayTemplate[] | null>(() => getWeek, null)
   const foodRules = live(() => getFoodRules, DEFAULT_FOOD_RULES)
+  const tracking = live(() => getTracking, { periods: false })
+  const exercise = live(() => getExercise, DEFAULT_EXERCISE)
+  const features = live(() => getFeatures, ALL_FEATURES)
+  const on = $derived(features.current)
   const tracks = live(() => listTracks, [] as Track[])
   const crunches = live(() => listCrunches, [] as Crunch[])
   const values = live(() => () => getDayValues(date), {} as DayValues)
-  const snacks = live(() => () => getSnacks(date), [] as Snack[])
   const todos = live(() => () => getTodos(date, isToday), [] as Task[])
   const dueTasks = live(() => () => getDueTasks(date, isToday), [] as DueTask[])
   const routines = live(() => () => getRoutineStatuses(date), [] as RoutineStatus[])
-  const sessions = live(() => () => getDaySessions(date), {} as Record<string, TrackSession>)
+  const allSessions = live(() => listSessions, [] as TrackSession[])
+  const steps = live(() => listAllSteps, [] as Topic[])
   const body = live(() => () => getDayMeasurements(date), {} as DayMeasurements)
   const weekEntries = live(() => {
     const from = monday
@@ -70,40 +71,26 @@
     return () => getEntriesBetween(from, to)
   }, [] as Entry[])
 
-  const topics = live(() => listTopics, [] as Topic[])
-  const spanishSettings = live(() => getSpanishSettings, DEFAULT_SPANISH)
-  const spanishLogs = live(() => listSpanishLogs, [] as SpanishLog[])
-  const drawingAreas = live<DrawingArea[] | null>(() => listDrawingAreas, null)
-  const drawingLogs = live(() => listDrawingLogs, [] as DrawingLog[])
-  const daySpanish = $derived(spanishLogs.current.filter((log) => log.date === date))
-  const slots = $derived(
-    trackSetup(date, {
-      topics: topics.current,
-      spanishLogs: spanishLogs.current,
-      spanishSettings: spanishSettings.current,
-      drawingAreas: drawingAreas.current,
-      drawingLogs: drawingLogs.current,
-    }),
-  )
-  const studyTopic = $derived(slots.topic)
-
   const plan = $derived(
     buildDay(parseDate(date), {
       week: week.current ?? undefined,
       doses: doses.current,
       tracks: tracks.current,
-      studyTopic: slots.studyTopic,
-      bookSession: slots.bookSession,
-      drawingArea: slots.drawingArea,
+      steps: steps.current,
+      sessions: allSessions.current,
+      exercise: exercise.current,
+      features: features.current,
     }),
   )
   const crunchDay = $derived(isCrunchDay(crunches.current, date))
   const counters = $derived(
-    weekCounters(weekEntries.current, habits.current, targets.current, countCrunchDays(crunches.current, monday, sunday)),
+    weekCounters(weekEntries.current, habits.current, targets.current, countCrunchDays(crunches.current, monday, sunday), features.current, {
+      monday,
+      week: week.current ?? [],
+      tracks: tracks.current,
+      sessions: allSessions.current.filter((session) => session.date >= monday && session.date <= sunday),
+    }),
   )
-  const snackTotal = $derived(snacks.current.reduce((sum, snack) => sum + snack.kcal, 0))
-  const snackBudget = $derived(targets.current.snackBudget)
-  const snackPercent = $derived(Math.min(100, Math.round((snackTotal / Math.max(1, snackBudget)) * 100)))
 
   // Routines: on today, the ones due or late (the latest few) plus the ones done; on other days,
   // the ones done that day.
@@ -119,18 +106,79 @@
   const hiddenRoutines = $derived(isToday ? Math.max(0, lateRoutines.length - MAX_LATE_ROUTINES) : 0)
   const notStarted = $derived(routines.current.filter((status) => status.lastDone === null).length)
 
-  let pickingSnack = $state(false)
   let newTodo = $state('')
 
   const ticked = (id: string) => values.current[`tick:${id}`] === true
-  const dayLog = (kind: DailyKind) => daySpanish.find((log) => log.id === `${date}|${kind}`)
 
-  /** Most items are plain ticks; tech study, the Spanish book and drawing also log a session. */
+  // ── The day's three parts as tabs (F44) ──
+  type Part = 'morning' | 'anytime' | 'evening'
+  const PARTS: { id: Part; label: string }[] = [
+    { id: 'morning', label: 'Morning' },
+    { id: 'anytime', label: 'Any time' },
+    { id: 'evening', label: 'Evening' },
+  ]
+
+  /** A track's session for one of the day's activities (F70). */
+  const sessionOf = (item: PlanItem) => (item.trackId ? sessionFor(allSessions.current, item.trackId, date, item.activity?.id) : undefined)
+
+  function itemDone(item: PlanItem): boolean {
+    if (item.id === 'weigh-in') return body.current.weight !== undefined && body.current.weight !== null
+    if (item.trackId) return !!sessionOf(item)
+    return ticked(item.tickKey ?? item.id)
+  }
+
+  /** Ticks a track's activity: a session, the day's step, the week's focus (F69). */
+  async function tickActivity(item: PlanItem) {
+    const track = tracks.current.find((candidate) => candidate.id === item.trackId)
+    if (!track || !item.activity) return
+    await setActivityDone(track, item.activity, date, !sessionOf(item), {
+      steps: stepsOf(track.id, steps.current),
+      sessions: allSessions.current.filter((session) => session.trackId === track.id),
+    })
+  }
+
+  /** Saves what you note on a track's session, keeping it on the session that's there. */
+  function saveDetails(item: PlanItem, details: Parameters<typeof saveSession>[2]) {
+    const session = sessionOf(item)
+    if (item.trackId) void saveSession(item.trackId, date, details, session ? session.activityId : item.activity?.id)
+  }
+
+  /** Done and total for each part. Any time also holds routines, list tasks and to-dos. */
+  const progress = $derived.by(() => {
+    const count = (items: PlanItem[]) => ({ done: items.filter(itemDone).length, total: items.length })
+    const anytime = count(plan.anytime)
+    anytime.done +=
+      shownRoutines.filter((status) => status.doneThatDay).length +
+      dueTasks.current.filter((due) => due.task.done).length +
+      todos.current.filter((todo) => todo.done).length
+    anytime.total += shownRoutines.length + dueTasks.current.length + todos.current.length
+    return { morning: count(plan.morning), anytime, evening: count(plan.evening) }
+  })
+
+  /** The part that fits the time of day: the day turns over at 06:00, and mornings start late (A24). */
+  function partOfDay(): Part {
+    const hour = new Date().getHours()
+    if (hour >= 6 && hour < 15) return 'morning'
+    if (hour >= 15 && hour < 21) return 'anytime'
+    return 'evening'
+  }
+
+  const hasLeft = (id: Part) => progress[id].done < progress[id].total
+  /** Today opens on the part for the time of day, or else on the first with something left. */
+  const suggestedPart = $derived.by((): Part => {
+    if (!isToday) return 'morning'
+    const now = partOfDay()
+    if (hasLeft(now)) return now
+    return PARTS.find((candidate) => hasLeft(candidate.id))?.id ?? now
+  })
+  // Once you tap anything, the part stays put, so ticking the last item doesn't move you.
+  let chosenPart = $state<Part | null>(null)
+  const part = $derived(chosenPart ?? suggestedPart)
+  const keepPart = () => (chosenPart ??= part)
+
+  /** Plain ticks: meds, the workout, the review, and your own activities (kept under their name). */
   async function tick(item: PlanItem) {
-    if (item.id === 'study' && studyTopic) await setTopicDone(studyTopic.id, date, studyTopic.doneDate !== date)
-    else if (item.id === 'spanish-book') await setBookSession(date, !ticked('spanish-book'))
-    else if (item.id === 'drawing-study') await setDrawingSession(date, !ticked('drawing-study'), slots.drawingAreaId)
-    else await toggleTick(date, item.id)
+    await toggleTick(date, item.tickKey ?? item.id)
   }
 
   function storedText(key: string): string {
@@ -138,7 +186,13 @@
     return typeof value === 'string' ? value : ''
   }
 
-  async function choose(key: 'rules' | 'work', value: string) {
+  /** Period days (F56), only when tracking is on in Settings. */
+  async function togglePeriod() {
+    if (values.current.period === true) await clearEntry(date, 'period')
+    else await setEntry(date, 'period', true)
+  }
+
+  async function choose(key: 'rules' | 'work' | 'energy', value: string) {
     if (values.current[key] === value) await clearEntry(date, key)
     else await setEntry(date, key, value)
   }
@@ -185,31 +239,15 @@
     await (savers.get(key) ?? saveEntry(key))(text)
   }
 
-  // ── Notes on what you did (F31): any ticked item except meds. Tech study keeps its notes
-  // with the topic; Spanish and drawing keep theirs with the session, so their screens show them.
+  // ── Notes on what you did (F31): any ticked item except meds. A track's session keeps its own
+  // notes (what you did, how it felt), so the track's page shows them.
   const doseIds = $derived(new Set(doses.current.map((dose) => dose.id)))
-  const takesNote = (item: PlanItem) => !doseIds.has(item.id) && item.id !== 'study' && item.id !== 'weigh-in'
-  const dayDrawing = $derived(drawingLogs.current.find((log) => log.date === date))
+  const takesNote = (item: PlanItem) => !doseIds.has(item.id) && item.id !== 'weigh-in' && !item.trackId
 
-  function storedNote(item: PlanItem): string {
-    if (item.id === 'spanish-book') return daySpanish.find((log) => log.id === `${date}|book`)?.notes ?? ''
-    if (item.id === 'spanish' && item.practice) return dayLog(item.practice)?.notes ?? ''
-    if (item.id === 'drawing-study') return dayDrawing?.note ?? ''
-    return storedText(`note:${item.id}`)
-  }
-
-  function noteSaver(item: PlanItem): (text: string) => Promise<void> {
-    const kind = item.practice
-    if (item.id === 'spanish-book') return (text) => saveBookSession(date, { notes: text.trim() })
-    if (item.id === 'spanish' && kind) return (text) => saveDayLog(date, kind, { notes: text.trim() })
-    if (item.id === 'drawing-study') return (text) => saveDrawingLog(date, { note: text.trim() })
-    return saveEntry(`note:${item.id}`)
-  }
+  const storedNote = (item: PlanItem) => storedText(`note:${item.id}`)
+  const noteSaver = (item: PlanItem) => saveEntry(`note:${item.id}`)
 
   const NOTE_HINTS: Record<string, string> = {
-    'spanish-book': 'What you did: the parts of the unit, extra exercises, the grammar point…',
-    spanish: 'What you watched, read or practised…',
-    'drawing-study': 'What you drew, and how it went…',
     workout: 'What you did, and how it felt…',
   }
 
@@ -235,42 +273,15 @@
 </script>
 
 {#snippet tickRow(item: PlanItem)}
-  <li class="row" class:done={ticked(item.id)}>
+  <li class="row" class:done={ticked(item.tickKey ?? item.id)}>
     <label class="check">
-      <input type="checkbox" checked={ticked(item.id)} onchange={() => tick(item)} />
+      <input type="checkbox" checked={ticked(item.tickKey ?? item.id)} onchange={() => tick(item)} />
       <span class="text">
         <span class="label">{item.label}</span>
         {#if item.detail}<span class="detail">{item.detail}</span>{/if}
       </span>
     </label>
     {#if item.link}<a class="item-link" href={item.link.href}>{item.link.text}</a>{/if}
-    {#if item.input && ticked(item.id)}
-      <div class="session">
-        {#if item.input === 'minutes'}
-          <label>
-            Minutes
-            <input
-              type="number"
-              inputmode="numeric"
-              min="0"
-              value={dayLog('video')?.minutes ?? ''}
-              onchange={(event) => saveDayLog(date, 'video', { minutes: toNumber(event.currentTarget.value) })}
-            />
-          </label>
-        {:else}
-          <label>
-            Pages
-            <input
-              type="number"
-              inputmode="numeric"
-              min="0"
-              value={dayLog('reading')?.pages ?? ''}
-              onchange={(event) => saveDayLog(date, 'reading', { pages: toNumber(event.currentTarget.value) })}
-            />
-          </label>
-        {/if}
-      </div>
-    {/if}
     {#if item.steps}
       <details class="steps">
         <summary>{item.stepsLabel ?? 'Show steps'}</summary>
@@ -279,7 +290,7 @@
         </ul>
       </details>
     {/if}
-    {#if takesNote(item) && ticked(item.id)}
+    {#if takesNote(item) && ticked(item.tickKey ?? item.id)}
       {@const key = `note:${item.id}`}
       {@const note = drafts[key] ?? storedNote(item)}
       <details class="steps note" open={!!note}>
@@ -335,43 +346,44 @@
 {/snippet}
 
 {#snippet trackRow(item: PlanItem)}
-  {@const trackId = item.id.slice(TRACK_ITEM_PREFIX.length)}
-  {@const session = sessions.current[trackId]}
+  {@const session = sessionOf(item)}
   <li class="row" class:done={!!session}>
     <label class="check">
-      <input type="checkbox" checked={!!session} onchange={() => setSession(trackId, date, !session)} />
+      <input type="checkbox" checked={!!session} onchange={() => tickActivity(item)} />
       <span class="text">
         <span class="label">{item.label}</span>
         {#if item.detail}<span class="detail">{item.detail}</span>{/if}
       </span>
     </label>
+    {#if item.link}<a class="item-link" href={item.link.href}>{item.link.text}</a>{/if}
+    {#if item.steps}
+      <details class="steps">
+        <summary>{item.stepsLabel ?? 'Show more'}</summary>
+        <ul>
+          {#each item.steps as step (step)}<li>{step}</li>{/each}
+        </ul>
+      </details>
+    {/if}
     {#if session}
       <div class="session">
-        <label>
-          Minutes
-          <input
-            type="number"
-            inputmode="numeric"
-            min="0"
-            value={session.minutes ?? ''}
-            onchange={(event) => saveSession(trackId, date, { minutes: toNumber(event.currentTarget.value) })}
-          />
-        </label>
+        {#if item.input === 'pages'}
+          <label>
+            Pages
+            <input type="number" inputmode="numeric" min="0" value={session.pages ?? ''} onchange={(event) => saveDetails(item, { pages: toNumber(event.currentTarget.value) })} />
+          </label>
+        {:else}
+          <label>
+            Minutes
+            <input type="number" inputmode="numeric" min="0" value={session.minutes ?? ''} onchange={(event) => saveDetails(item, { minutes: toNumber(event.currentTarget.value) })} />
+          </label>
+        {/if}
         <label class="grow">
-          What you practised
-          <input
-            type="text"
-            value={session.practiced}
-            onchange={(event) => saveSession(trackId, date, { practiced: event.currentTarget.value.trim() })}
-          />
+          What you did
+          <input type="text" value={session.practiced} onchange={(event) => saveDetails(item, { practiced: event.currentTarget.value.trim() })} />
         </label>
         <label class="grow">
           How it felt
-          <input
-            type="text"
-            value={session.feeling}
-            onchange={(event) => saveSession(trackId, date, { feeling: event.currentTarget.value.trim() })}
-          />
+          <input type="text" value={session.feeling} onchange={(event) => saveDetails(item, { feeling: event.currentTarget.value.trim() })} />
         </label>
       </div>
     {/if}
@@ -381,7 +393,7 @@
 {#snippet itemRow(item: PlanItem)}
   {#if item.id === 'weigh-in'}
     {@render weighInRow(item)}
-  {:else if item.id.startsWith(TRACK_ITEM_PREFIX)}
+  {:else if item.trackId}
     {@render trackRow(item)}
   {:else}
     {@render tickRow(item)}
@@ -409,15 +421,27 @@
 {/if}
 
 {#if week.current}
-<section class="part morning">
-  <h2>Morning</h2>
-  <ul class="list">
-    {#each plan.morning as item (item.id)}{@render itemRow(item)}{/each}
-  </ul>
-</section>
+<div class="part-tabs" role="tablist" aria-label="Parts of the day">
+  {#each PARTS as tab (tab.id)}
+    <button type="button" role="tab" class="part-tab {tab.id}" aria-selected={part === tab.id} onclick={() => (chosenPart = tab.id)}>
+      {tab.label}
+      {#if progress[tab.id].total}<span class="part-count">{progress[tab.id].done}/{progress[tab.id].total}</span>{/if}
+    </button>
+  {/each}
+</div>
 
-<section class="part anytime">
-  <h2>Any time</h2>
+<!-- Tapping anything here keeps this part open (a checkbox's keyboard toggle is a click too). -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+<div class="part part-panel {part}" role="tabpanel" aria-label={PARTS.find((candidate) => candidate.id === part)?.label} onclickcapture={keepPart}>
+{#if part === 'morning'}
+  {#if plan.morning.length}
+    <ul class="list">
+      {#each plan.morning as item (item.id)}{@render itemRow(item)}{/each}
+    </ul>
+  {:else}
+    <p class="muted small">Nothing planned this morning.</p>
+  {/if}
+{:else if part === 'anytime'}
   <ul class="list">
     {#each plan.anytime as item (item.id)}{@render itemRow(item)}{/each}
     {#each shownRoutines as status (status.routine.id)}
@@ -483,95 +507,93 @@
     <button type="submit" class="button">Add</button>
   </form>
 
-  <div class="card snacks">
-    <div class="snack-head">
-      <span class="field-label">Snacks</span>
-      <span class:over={snackTotal > snackBudget}>{snackTotal} / {snackBudget} kcal</span>
-      <button type="button" class="button small" aria-expanded={pickingSnack} onclick={() => (pickingSnack = !pickingSnack)}>
-        {pickingSnack ? 'Done' : 'Add snack'}
-      </button>
-    </div>
-    <div class="bar" aria-hidden="true"><div style:width="{snackPercent}%"></div></div>
-    {#if snacks.current.length}
-      <ul class="eaten">
-        {#each snacks.current as snack (snack.id)}
-          <li>
-            {snack.name} · {snack.kcal}
-            <button type="button" class="remove" aria-label="Remove {snack.name}" onclick={() => removeSnack(snack.id)}>×</button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-    {#if pickingSnack}
-      <div class="picker">
-        {#each snackDefs.current as snack (snack.id)}
-          <button type="button" onclick={() => addSnack(date, snack.name, snack.kcal)}>
-            {snack.name}
-            <small>{snack.kcal} kcal</small>
-          </button>
-        {/each}
-      </div>
-    {/if}
-  </div>
-</section>
-
-<section class="part evening">
-  <h2>Evening</h2>
+{:else}
   {#if plan.evening.length}
     <ul class="list">
       {#each plan.evening as item (item.id)}{@render itemRow(item)}{/each}
     </ul>
+  {:else}
+    <p class="muted small">Nothing planned this evening.</p>
   {/if}
+{/if}
+</div>
 
-  {#if plan.foodRules}
+{#if on.food || on.diary}
+<section>
+  <h2>Food</h2>
+  {#if !on.food}
+    <!-- Food guidelines are turned off in Settings → What you use. -->
+  {:else if plan.foodRules}
     <div class="field">
-      <span class="field-label" id="rules-label">Food rules today</span>
+      <span class="field-label" id="rules-label">How did eating go?</span>
       <div class="seg" role="group" aria-labelledby="rules-label">
-        <button type="button" aria-pressed={values.current.rules === 'kept'} onclick={() => choose('rules', 'kept')}>Kept</button>
-        <button type="button" aria-pressed={values.current.rules === 'slip'} onclick={() => choose('rules', 'slip')}>Slip</button>
+        {#each EATING_CHOICES as choice (choice.value)}
+          <button type="button" aria-pressed={values.current.rules === choice.value} onclick={() => choose('rules', choice.value)}>{choice.label}</button>
+        {/each}
       </div>
       <details class="rules">
-        <summary>See the rules</summary>
+        <summary>See the guidelines</summary>
         <ol>
           {#each foodRules.current as rule, index (index)}<li>{rule}</li>{/each}
         </ol>
-        <a class="small" href="#/setup">Change the rules in Setup</a>
+        <a class="small" href="#/setup">Change the guidelines in Setup</a>
       </details>
     </div>
   {:else}
-    <p class="field muted">Free day: the food rules are off today.</p>
+    <p class="field muted">Free day: the food guidelines are off today.</p>
   {/if}
 
-  <label class="field">
-    <span class="field-label">Food diary</span>
-    <textarea
-      rows="2"
-      placeholder="Roughly what you ate today"
-      value={drafts.diary ?? storedText('diary')}
-      oninput={(event) => editText('diary', event.currentTarget.value)}
-      onblur={() => finishText('diary')}
-    ></textarea>
-  </label>
-
-  <div class="field">
-    <span class="field-label" id="work-label">Work today</span>
-    <div class="seg" role="group" aria-labelledby="work-label">
-      {#each ['–', '1', '2', '3'] as value (value)}
-        <button type="button" aria-pressed={values.current.work === value} onclick={() => choose('work', value)}>{value}</button>
-      {/each}
-    </div>
-  </div>
-
-  <label class="field">
-    <span class="field-label">Note</span>
-    <textarea
-      rows="2"
-      value={drafts.note ?? storedText('note')}
-      oninput={(event) => editText('note', event.currentTarget.value)}
-      onblur={() => finishText('note')}
-    ></textarea>
-  </label>
+  {#if on.diary}
+    <label class="field">
+      <span class="field-label">Food diary</span>
+      <textarea
+        rows="2"
+        placeholder="Roughly what you ate today"
+        value={drafts.diary ?? storedText('diary')}
+        oninput={(event) => editText('diary', event.currentTarget.value)}
+        onblur={() => finishText('diary')}
+      ></textarea>
+    </label>
+  {/if}
 </section>
+{/if}
+
+{#if on.energy || tracking.current.periods}
+<section>
+  <h2 id="energy-label">{on.energy ? 'Energy' : 'Period'}</h2>
+  <div class="check-row">
+    {#if on.energy}
+      <div class="seg" role="group" aria-labelledby="energy-label">
+        {#each ['1', '2', '3'] as value (value)}
+          <button type="button" aria-pressed={values.current.energy === value} onclick={() => choose('energy', value)}>{value}</button>
+        {/each}
+      </div>
+    {/if}
+    {#if tracking.current.periods}
+      <button
+        type="button"
+        class="period-toggle"
+        aria-pressed={values.current.period === true}
+        aria-label="Period day"
+        title="Period day"
+        onclick={togglePeriod}><Icon name={values.current.period === true ? 'drop-fill' : 'drop'} /></button
+      >
+    {/if}
+  </div>
+  <p class="muted small hint-line">{on.energy ? '1 is low, 3 is good.' : ''}{tracking.current.periods ? ' The drop marks a period day.' : ''}</p>
+</section>
+{/if}
+
+{#if on.work}
+<section>
+  <h2 id="work-label">Work rating</h2>
+  <div class="seg" role="group" aria-labelledby="work-label">
+    {#each ['–', '1', '2', '3'] as value (value)}
+      <button type="button" aria-pressed={values.current.work === value} onclick={() => choose('work', value)}>{value}</button>
+    {/each}
+  </div>
+</section>
+{/if}
 {/if}
 
 <section>
@@ -583,11 +605,25 @@
   </div>
 </section>
 
+{#if week.current}
+<section>
+  <h2>Note</h2>
+  <textarea
+    rows="2"
+    aria-label="Note"
+    placeholder="Anything about today"
+    value={drafts.note ?? storedText('note')}
+    oninput={(event) => editText('note', event.currentTarget.value)}
+    onblur={() => finishText('note')}
+  ></textarea>
+</section>
+{/if}
+
 <section>
   <h2>This week</h2>
   <ul class="week">
     {#each counters as counter (counter.id)}
-      <li>{counter.label} <strong>{counter.count}{counter.target !== null ? `/${counter.target}` : ''}</strong></li>
+      <li>{counter.label} <strong>{countText(counter.count)}{counter.target !== null ? `/${counter.target}` : ''}</strong></li>
     {/each}
   </ul>
   {#if isToday && !crunchDay}

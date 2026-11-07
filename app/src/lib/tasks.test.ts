@@ -37,6 +37,14 @@ describe('task lists', () => {
     expect(titles(tasks.archived)).toEqual(['Trip'])
   })
 
+  it('puts tasks with a deadline first, soonest first, and keeps the order of the rest', async () => {
+    await addTask('list-life', 'No date 1')
+    await addTask('list-life', 'Next month', { due: '2026-12-01' })
+    await addTask('list-life', 'No date 2')
+    await addTask('list-life', 'This week', { due: '2026-11-05' })
+    expect(titles((await getListTasks('list-life')).open)).toEqual(['This week', 'Next month', 'No date 1', 'No date 2'])
+  })
+
   it('shows tasks due on Today, oldest deadline first, but not from lists kept off Today', async () => {
     await addTask('list-life', 'Renew passport', { due: '2026-11-02' })
     await addTask('list-life', 'Later', { due: '2026-11-09' })

@@ -23,7 +23,8 @@ export interface Entry extends Synced {
 export interface Snack extends Synced {
   date: string
   name: string
-  kcal: number
+  /** Null when you didn't know ("?", F46). */
+  kcal: number | null
 }
 
 /** A to-do. Task lists, deadlines and subtasks (M3) use the same record. */
@@ -97,18 +98,40 @@ export interface Staple extends Synced {
   group: string
   low: boolean
   order: number
+  /** The shopping tab it's on (F60); missing means Food. */
+  tab?: string
+  /** Bought once and gone, instead of kept at hand (D77). */
+  oneOff?: boolean
 }
 
 /** A short practice track, like a month of driving (PLAN.md 7.9). */
 export interface Track extends Synced {
   name: string
   start: string
+  /** How many weeks it runs; not used when it's ongoing. */
   weeks: number
-  /** Monday = 0 … Sunday = 6. */
+  /**
+   * Monday = 0 … Sunday = 6: the days it was on before the week held activities (F70). Days
+   * whose activities were never changed still follow them.
+   */
   weekdays: number[]
-  /** One line per week. */
+  /** The weekly focus, one line per week. */
   focus: string[]
   order: number
+  /** Runs with no end (F69). */
+  ongoing?: boolean
+  /** The focus loops: it moves on after a week with a session, and starts over after the last. */
+  loop?: boolean
+  /** More about each focus line, one entry per line: exercises, sources… */
+  focusNotes?: string[]
+  /** It has steps in order, kept as topics with its id. */
+  steps?: boolean
+  /** Time toward a goal: milestones in hours (an empty list just adds up the hours); null for none. */
+  milestones?: { name: string; hours: number }[] | null
+  /** Sessions a week to aim for; null for the days it's on your week. */
+  target?: number | null
+  /** A habit each session also ticks, like Drawing (F5). */
+  habitId?: string | null
 }
 
 /** One practice session. The id is "<track id>|<date>". */
@@ -118,6 +141,14 @@ export interface TrackSession extends Synced {
   minutes: number | null
   practiced: string
   feeling: string
+  /** Pages, for activities that log pages. */
+  pages?: number | null
+  /** The week's activity it was for (F70); older sessions have none. */
+  activityId?: string
+  /** The step it ticked, for activities that move through steps. */
+  stepId?: string | null
+  /** The weekly focus it was for. */
+  focus?: string
 }
 
 /** A stretch of crunch days; end is null while it's still on (D20). */
@@ -128,6 +159,8 @@ export interface Crunch extends Synced {
 
 /** A tech study topic (PLAN.md Appendix B). */
 export interface Topic extends Synced {
+  /** The track it's a step of (F69); tech study's topics from before have none. */
+  trackId?: string
   number: number
   block: string
   title: string
@@ -166,6 +199,9 @@ export interface Recipe extends Synced {
   /** 1–5 */
   enjoyment: number | null
   order: number
+  /** On the Want to try tab until it's cooked (F61). */
+  wantToTry?: boolean
+  favorite?: boolean
 }
 
 /** One time a recipe was cooked. The id is "<recipe id>|<date>". */
@@ -236,6 +272,8 @@ export interface Goal extends Synced {
   /** The date it was reached. */
   reached: string | null
   order: number
+  /** A number to reach, for the progress bar (F58). Kept in your data, not the code. */
+  target?: number | null
 }
 
 /** A drawing study area with its exercises and sources (PLAN.md 7.6). */

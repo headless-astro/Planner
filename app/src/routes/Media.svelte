@@ -1,9 +1,11 @@
 <script lang="ts" module>
-  export type MediaView = 'log' | 'want' | 'favorites'
+  export type MediaView = 'log' | 'want' | 'done' | 'favorites'
 </script>
 
 <script lang="ts">
+  import AddToggle from '../components/AddToggle.svelte'
   import Icon from '../components/Icon.svelte'
+  import MoreNav from '../components/MoreNav.svelte'
   import { formatDate, parseDate } from '../lib/dates'
   import type { MediaItem, MediaStatus, Thumb } from '../lib/db'
   import { live } from '../lib/live.svelte'
@@ -25,13 +27,11 @@
     type MediaChanges,
     type MediaOrder,
     type Shelf,
-    type ShelfInfo,
   } from '../lib/media'
   import { checkLetterboxd, getLetterboxd, importExport, profileLink, type MergeResult } from '../lib/letterboxd'
 
   let { shelf, today, view = 'log' }: { shelf: Shelf; today: string; view?: MediaView } = $props()
 
-  const TABS = Object.entries(SHELVES) as [Shelf, ShelfInfo][]
   const RATINGS = [1, 2, 3, 4, 5]
   const THUMBS: { value: Thumb; label: string; icon: 'thumbs-up' | 'minus' | 'thumbs-down' }[] = [
     { value: 'up', label: 'Enjoyed it', icon: 'thumbs-up' },
@@ -39,7 +39,7 @@
     { value: 'down', label: "Didn't enjoy it", icon: 'thumbs-down' },
   ]
   const STATUSES: MediaStatus[] = ['active', 'want', 'done', 'stopped']
-  const VIEW_PATH: Record<MediaView, string> = { log: '', want: '/want', favorites: '/favorites' }
+  const VIEW_PATH: Record<MediaView, string> = { log: '', want: '/want', done: '/done', favorites: '/favorites' }
 
   const info = $derived(SHELVES[shelf])
   const want = $derived(view === 'want')
@@ -77,9 +77,22 @@
     ),
   )
 
+  // Finished ones move to the Finished tab; the ones you just finished here stay in view
+  // until they're rated, so the "How was it?" prompt is right there.
+  let justFinished = $state<string[]>([])
+  const justDone = $derived(
+    view === 'log' ? items.current.filter((item) => justFinished.includes(item.id) && item.status === 'done' && !isRated(item)) : [],
+  )
+  async function finish(item: MediaItem) {
+    justFinished = [...justFinished, item.id]
+    await finishMedia(item.id, today)
+  }
+
+  // The add form opens with + and adds to the sub-tab you're on (F51, F52).
+  let adding = $state(false)
+  const newStatus = $derived<'want' | 'active' | 'done'>(view === 'want' ? 'want' : view === 'done' ? 'done' : 'active')
   let newTitle = $state('')
   let newAuthor = $state('')
-  let newStatus = $state<'active' | 'done'>('active')
   // Empty dates mean today.
   let newStarted = $state('')
   let newFinished = $state('')
@@ -139,7 +152,7 @@
     event.preventDefault()
     const title = newTitle.trim()
     if (!title) return
-    await addMedia(info.kind, title, want ? 'want' : newStatus, today, {
+    await addMedia(info.kind, title, newStatus, today, {
       author: newAuthor.trim(),
       format: info.format ?? undefined,
       started: newStarted || today,
@@ -155,6 +168,7 @@
     newRating = null
     newThumb = null
     newFavorite = false
+    adding = false
   }
 </script>
 
@@ -218,7 +232,7 @@
         item.favorite ? `Remove "${item.title}" from favourites` : `Add "${item.title}" to favourites`,
       )}
       {#if item.status === 'active'}
-        <button type="button" class="button small" onclick={() => finishMedia(item.id, today)}>Finished</button>
+        <button type="button" class="button small" onclick={() => finish(item)}>Finished</button>
       {:else if item.status === 'want'}
         <button type="button" class="button small secondary" onclick={() => startMedia(item.id, today)}>Start</button>
       {/if}
@@ -287,26 +301,30 @@
   </div>
 {/snippet}
 
-<header>
-  <h1>{info.title}</h1>
-  <p class="date">
-    {view === 'want'
-      ? `What you'd like to get to. Start one and it moves to ${info.log}.`
-      : view === 'favorites'
-        ? 'The ones you gave a heart.'
-        : 'What you’re on now, and everything you finished.'}
-  </p>
+<header class="with-add">
+  <div>
+    <h1>{info.title}</h1>
+    <p class="date">
+      {view === 'want'
+        ? `What you'd like to get to. Start one and it moves to ${info.log}.`
+        : view === 'done'
+          ? 'Everything you finished, and the ones you stopped.'
+          : view === 'favorites'
+            ? 'The ones you gave a heart.'
+            : 'What you’re on now.'}
+    </p>
+  </div>
+  {#if view !== 'favorites'}
+    <AddToggle bind:open={adding} label={view === 'want' ? `Add to ${info.want.toLowerCase()}` : `Add a ${info.one}`} />
+  {/if}
 </header>
 
-<nav class="chips list-tabs" aria-label="Books, games, movies and shows">
-  {#each TABS as [key, value] (key)}
-    <a class="chip" href="#/{key}{VIEW_PATH[view]}" aria-current={key === shelf ? 'page' : undefined}>{value.title}</a>
-  {/each}
-</nav>
+<MoreNav current={shelf} {view} />
 
-<nav class="subtabs media-subtabs" aria-label="{info.log}, {info.want} and favourites">
+<nav class="subtabs media-subtabs" aria-label="{info.log}, {info.want}, {info.done} and favourites">
   <a href="#/{shelf}" aria-current={view === 'log' ? 'page' : undefined}>{info.log}</a>
   <a href="#/{shelf}/want" aria-current={view === 'want' ? 'page' : undefined}>{info.want}</a>
+  <a href="#/{shelf}/done" aria-current={view === 'done' ? 'page' : undefined}>{info.done}</a>
   <a href="#/{shelf}/favorites" class="fav-tab" aria-current={view === 'favorites' ? 'page' : undefined} aria-label="Favourites" title="Favourites"
     ><Icon name={view === 'favorites' ? 'heart-fill' : 'heart'} /></a
   >
@@ -327,8 +345,9 @@
     {/if}
   </section>
 {:else}
+  {#if adding}
   <section>
-    <h2>{want ? `Add to ${info.want.toLowerCase()}` : `Add a ${info.one}`}</h2>
+    <h2>{want ? `Add to ${info.want.toLowerCase()}` : view === 'done' ? `Add a ${info.one} you finished` : `Add a ${info.one}`}</h2>
     <form class="card edit-panel add-media" onsubmit={submit}>
       <div class="title-row">
         <input type="text" bind:value={newTitle} placeholder="Title" aria-label="New {info.one}" />
@@ -338,10 +357,6 @@
         <input type="text" bind:value={newAuthor} placeholder="Author (optional)" aria-label="Author" />
       {/if}
       {#if !want}
-        <div class="seg" role="group" aria-label="Status">
-          <button type="button" aria-pressed={newStatus === 'active'} onclick={() => (newStatus = 'active')}>{info.active}</button>
-          <button type="button" aria-pressed={newStatus === 'done'} onclick={() => (newStatus = 'done')}>Finished</button>
-        </div>
         <label>
           Started
           <input type="date" max={today} value={newStarted || today} oninput={(event) => (newStarted = event.currentTarget.value)} />
@@ -367,6 +382,7 @@
       <p class="muted small">Finishing one ticks {info.tick === 'read' ? 'Read' : 'Movie/Show'} on the day you finished it, past days too.</p>
     {/if}
   </section>
+  {/if}
 
   {#if want}
     <section>
@@ -379,19 +395,10 @@
         <p class="muted small">Nothing here yet.</p>
       {/if}
     </section>
-  {:else}
-    {#if groups.active.length}
-      <section>
-        <h2>{info.active}</h2>
-        <ul class="list">
-          {#each groups.active as item (item.id)}{@render itemRow(item)}{/each}
-        </ul>
-      </section>
-    {/if}
-
+  {:else if view === 'done'}
     <section>
       <div class="media-head">
-        <h2>Finished</h2>
+        <h2>{info.done}</h2>
         {#if finished.length > 1}{@render orderPicker()}{/if}
       </div>
       {#if finished.length}
@@ -403,13 +410,32 @@
         <p class="muted small">Nothing finished yet.</p>
       {/if}
     </section>
+  {:else}
+    {#if justDone.length}
+      <section>
+        <h2>Just finished</h2>
+        <ul class="list">
+          {#each justDone as item (item.id)}{@render itemRow(item)}{/each}
+        </ul>
+      </section>
+    {/if}
+    <section>
+      <h2>{info.active}</h2>
+      {#if groups.active.length}
+        <ul class="list">
+          {#each groups.active as item (item.id)}{@render itemRow(item)}{/each}
+        </ul>
+      {:else}
+        <p class="muted small">Nothing on the go. Tap + to add a {info.one}, or start one from {info.want}.</p>
+      {/if}
+    </section>
   {/if}
 {/if}
 
-{#if shelf === 'movies' && view !== 'favorites'}
+{#if shelf === 'movies' && view === 'done'}
   <section>
-    <h2>Letterboxd</h2>
-    <div class="card letterboxd">
+    <details class="card letterboxd" open={!!letterboxdMessage}>
+      <summary>Letterboxd</summary>
       {#if letterboxd.current.username}
         <p class="small">
           <a href={profileLink(letterboxd.current.username)} target="_blank" rel="noopener noreferrer">Open your Letterboxd</a>
@@ -429,6 +455,6 @@
         and your watchlist come in. Films already here are updated, not doubled.
       </p>
       {#if letterboxdMessage}<p class="small" role="status">{letterboxdMessage}</p>{/if}
-    </div>
+    </details>
   </section>
 {/if}

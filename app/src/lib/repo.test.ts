@@ -4,15 +4,15 @@ import {
   addDose,
   addTodo,
   deleteDose,
+  deleteHabit,
   ensureSeeded,
   getDayMeasurements,
-  getDaySummaries,
   getDayValues,
   getTargets,
   getTodos,
   listDoses,
+  listHabits,
   moveDose,
-  setEntry,
   setMeasurement,
   setTodoDone,
   toggleTick,
@@ -90,13 +90,21 @@ describe('measurements', () => {
   })
 })
 
-describe('getDaySummaries', () => {
-  it('lists every day newest first, including empty ones', async () => {
-    await setEntry('2026-11-01', 'work', '2')
-    await toggleTick('2026-11-01', 'workout')
-    const days = await getDaySummaries('2026-10-31', '2026-11-02')
-    expect(days.map((day) => day.date)).toEqual(['2026-11-02', '2026-11-01', '2026-10-31'])
-    expect(days[1]).toMatchObject({ work: '2', ticks: 1 })
-    expect(days[0]).toMatchObject({ ticks: 0, work: null })
+describe('the skin routine', () => {
+  it('becomes a habit, keeping its target and every tick it had', async () => {
+    await db.delete()
+    await db.open()
+    // A device set up before, with its skin target changed to 5.
+    for (const id of ['seeded', 'seeded-m3', 'seeded-m4', 'seeded-m5']) await db.meta.put({ id, value: 1 })
+    await db.settings.put({ id: 'targets', value: { skin: 5 }, updatedAt: 1 })
+    await toggleTick('2026-11-02', 'skin')
+    await ensureSeeded()
+    expect(await listHabits()).toContainEqual(expect.objectContaining({ id: 'skin', label: 'Skin routine', weeklyTarget: 5 }))
+    expect((await listHabits())[0].id).toBe('skin')
+    expect((await getDayValues('2026-11-02'))['tick:skin']).toBe(true)
+    // Deleting it sticks: it isn't added again.
+    await deleteHabit('skin')
+    await ensureSeeded()
+    expect((await listHabits()).map((habit) => habit.id)).not.toContain('skin')
   })
 })

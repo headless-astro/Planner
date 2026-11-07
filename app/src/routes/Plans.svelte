@@ -1,76 +1,84 @@
 <script lang="ts">
-  // The Plans sub-tab (F33): a short "now and next" for each plan. Each title opens the full page.
+  // The Plans sub-tab (F33, F69): your week, then a short "now and next" for each track. Each
+  // title opens the full page.
   import Icon, { type IconName } from '../components/Icon.svelte'
   import PlansNav from '../components/PlansNav.svelte'
+  import { dayActivities, scheduledThings } from '../lib/activities'
   import { addDays, parseDate, toISODate, weekStart, weekdayIndex } from '../lib/dates'
-  import type { DrawingArea, DrawingLog, SpanishLog, Topic, Track, TrackSession } from '../lib/db'
-  import { drawingAreaFor, listDrawingAreas, listDrawingLogs } from '../lib/drawing'
+  import type { Topic, Track, TrackSession } from '../lib/db'
+  import { DEFAULT_EXERCISE } from '../lib/exercise'
+  import { ALL_FEATURES } from '../lib/features'
   import { live } from '../lib/live.svelte'
-  import { daysWith } from '../lib/plan'
-  import { getWeek } from '../lib/repo'
-  import { DEFAULT_SPANISH, MORNING_BLOCKS, WORKOUTS, type DayTemplate } from '../lib/setup'
-  import { bookState, dsProgress, getSpanishSettings, listSpanishLogs, nextBookSession, videoMinutes } from '../lib/spanish'
-  import { listTopics, studyProgress } from '../lib/study'
-  import { comingDays, dayLabel, nextDayWhere, trackNow } from '../lib/summary'
-  import { listSessions, listTracks } from '../lib/tracks'
+  import { buildDay } from '../lib/plan'
+  import { getExercise, getFeatures, getWeek } from '../lib/repo'
+  import type { DayTemplate } from '../lib/setup'
+  import { comingDays, dayLabel } from '../lib/summary'
+  import { focusFor, hoursOf, isRunning, listAllSteps, listSessions, listTracks, milestoneProgress, stepsOf, trackStatus } from '../lib/tracks'
 
   let { today }: { today: string } = $props()
 
   const week = live<DayTemplate[] | null>(() => getWeek, null)
-  const topics = live(() => listTopics, [] as Topic[])
-  const spanishLogs = live(() => listSpanishLogs, [] as SpanishLog[])
-  const spanishSettings = live(() => getSpanishSettings, DEFAULT_SPANISH)
-  const areas = live(() => listDrawingAreas, [] as DrawingArea[])
-  const drawingLogs = live(() => listDrawingLogs, [] as DrawingLog[])
+  const features = live(() => getFeatures, ALL_FEATURES)
+  const exercise = live(() => getExercise, DEFAULT_EXERCISE)
   const tracks = live(() => listTracks, [] as Track[])
+  const steps = live(() => listAllSteps, [] as Topic[])
   const sessions = live(() => listSessions, [] as TrackSession[])
 
-  const days = $derived(week.current ?? [])
-  const when = (test: (day: DayTemplate) => boolean) => {
-    const date = nextDayWhere(days, today, test)
-    return date ? dayLabel(date, today) : null
-  }
-
-  // The week: today and the six days after it.
+  // The week: today and the six days after it, with what's on each.
   const coming = $derived(
     comingDays(today).map((date) => {
-      const day = days[weekdayIndex(parseDate(date))]
-      const parts = day ? [MORNING_BLOCKS[day.morning], day.workout === 'rest' ? 'Rest day' : WORKOUTS[day.workout]] : []
-      return { date, label: dayLabel(date, today), text: parts.filter((part) => part && part !== 'Free').join(' · ') }
+      const plan = buildDay(parseDate(date), {
+        week: week.current ?? undefined,
+        tracks: tracks.current,
+        steps: steps.current,
+        sessions: sessions.current,
+        exercise: exercise.current,
+        features: features.current,
+        doses: [],
+      })
+      const labels = [...plan.morning, ...plan.anytime, ...plan.evening]
+        .filter((item) => item.activity || item.id === 'workout' || item.id === 'review')
+        .map((item) => (item.id === 'workout' ? item.label.replace('Workout → ', '') : item.trackId ? (tracks.current.find((track) => track.id === item.trackId)?.name ?? item.label) : item.label))
+      // A track on twice in a day (Spanish's book and video) is named once.
+      return { date, label: dayLabel(date, today), text: [...new Set(labels)].join(' · ') }
     }),
   )
 
-  // Tech study.
-  const nextTopic = $derived(topics.current.find((topic) => !topic.doneDate) ?? null)
-  const study = $derived(studyProgress(topics.current, today, daysWith(days, 'tech').length))
-  const revision = $derived(topics.current.filter((topic) => topic.needsRevision).length)
-  const studyNext = $derived(when((day) => day.morning === 'tech'))
-
-  // Spanish.
-  const book = $derived(nextBookSession(bookState(spanishLogs.current, spanishSettings.current), spanishSettings.current))
-  const bookNext = $derived(when((day) => day.morning === 'spanish-book'))
   const monday = $derived(toISODate(weekStart(parseDate(today))))
-  const weekMinutes = $derived(videoMinutes(spanishLogs.current.filter((log) => log.date >= monday && log.date <= today)))
-  const ds = $derived(dsProgress(videoMinutes(spanishLogs.current)))
+  const sunday = $derived(toISODate(addDays(parseDate(monday), 6)))
+  const scheduled = $derived(week.current ? scheduledThings(week.current, tracks.current) : [])
 
-  // Drawing.
-  const area = $derived(drawingAreaFor(areas.current, drawingLogs.current, today))
-  const fourWeeksAgo = $derived(toISODate(addDays(parseDate(today), -27)))
-  const recentDrawing = $derived(drawingLogs.current.filter((log) => log.date >= fourWeeksAgo && log.date <= today).length)
-  const drawingNext = $derived(when((day) => day.morning === 'drawing'))
-
-  // Practice tracks.
-  const trackRows = $derived(
-    tracks.current.map((track) => ({
-      track,
-      now: trackNow(track, today),
-      count: sessions.current.filter((session) => session.trackId === track.id).length,
-    })),
+  /** Each track: where it is, what's next, and how this week is going. */
+  const rows = $derived(
+    tracks.current.map((track) => {
+      const own = sessions.current.filter((session) => session.trackId === track.id)
+      const trackSteps = stepsOf(track.id, steps.current)
+      const status = trackStatus(track, today)
+      const days = scheduled.find((thing) => thing.trackId === track.id)?.weekdays.length ?? 0
+      const target = track.target ?? days
+      const thisWeek = new Set(own.filter((session) => session.date >= monday && session.date <= sunday).map((session) => session.date)).size
+      // The next day it's on, within two weeks.
+      const next = comingDays(today, 14).find((date) => {
+        const weekday = weekdayIndex(parseDate(date))
+        const day = week.current?.[weekday]
+        return !!day && isRunning(track, date) && dayActivities(day, weekday, tracks.current).some((activity) => activity.trackId === track.id)
+      })
+      return {
+        track,
+        status,
+        nextStep: track.steps ? (trackSteps.find((step) => !step.doneDate) ?? null) : null,
+        stepsDone: trackSteps.filter((step) => step.doneDate).length,
+        stepsTotal: trackSteps.length,
+        focus: focusFor(track, own, today),
+        progress: track.milestones ? milestoneProgress(hoursOf(own), track.milestones) : null,
+        thisWeek,
+        target,
+        next: next ? dayLabel(next, today) : null,
+      }
+    }),
   )
-  const activeTracks = $derived(trackRows.filter((row) => row.now.state !== 'finished'))
-  const finishedTracks = $derived(trackRows.filter((row) => row.now.state === 'finished'))
-
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const current = $derived(rows.filter((row) => row.status.state !== 'finished'))
+  const finished = $derived(rows.filter((row) => row.status.state === 'finished'))
 </script>
 
 {#snippet title(icon: IconName, text: string, href: string)}
@@ -85,7 +93,7 @@
 
 <header>
   <h1>Plans</h1>
-  <p class="date">Where each plan is and what's next. Tap a title for the full page.</p>
+  <p class="date">Your week, and where each track is. Tap a title for the full page.</p>
 </header>
 
 <section class="card plan-card">
@@ -102,46 +110,40 @@
   {/if}
 </section>
 
-<section class="card plan-card">
-  {@render title('books', 'Tech study', '#/study')}
-  {#if nextTopic}
-    <p class="plan-now">Next: #{nextTopic.number} {nextTopic.title}</p>
-  {:else if topics.current.length}
-    <p class="plan-now">Every topic is done.</p>
-  {/if}
-  <p class="small muted">
-    {study.done} of {study.total} topics done{studyNext ? ` · next session: ${studyNext}` : ''}{revision ? ` · ${revision} to revise` : ''}
-  </p>
-</section>
-
-<section class="card plan-card">
-  {@render title('books', 'Spanish', '#/spanish')}
-  <p class="plan-now">Book: {book}{bookNext ? ` · ${bookNext}` : ''}</p>
-  <p class="small muted">
-    {weekMinutes} min of video this week · level {ds.level}{ds.nextLevel !== null && ds.hoursToNext !== null
-      ? `, ${ds.hoursToNext.toFixed(1)} h to level ${ds.nextLevel}`
-      : ''}
-  </p>
-</section>
-
-<section class="card plan-card">
-  {@render title('books', 'Drawing', '#/drawing')}
-  <p class="plan-now">This week: {area?.name ?? 'no areas yet'}{drawingNext ? ` · ${drawingNext}` : ''}</p>
-  <p class="small muted">{plural(recentDrawing, 'session')} in the last 4 weeks</p>
-</section>
-
-{#each activeTracks as row (row.track.id)}
+{#each current as row (row.track.id)}
   <section class="card plan-card">
-    {@render title('books', row.track.name, '#/tracks')}
-    <p class="plan-now">{row.now.status}{row.now.next ? ` · next: ${dayLabel(row.now.next, today)}` : ''}</p>
-    <p class="small muted">{row.now.focus ? `Focus: ${row.now.focus} · ` : ''}{plural(row.count, 'session')} so far</p>
+    {@render title('books', row.track.name, `#/track/${row.track.id}`)}
+    {#if row.nextStep}
+      <p class="plan-now">Next: {row.nextStep.title}</p>
+    {:else if row.focus}
+      <p class="plan-now">This week: {row.focus.name}</p>
+    {:else if row.track.steps && row.stepsTotal}
+      <p class="plan-now">Every step is done.</p>
+    {:else}
+      <p class="plan-now">{row.status.text}</p>
+    {/if}
+    <p class="small muted">
+      {[
+        row.track.steps && row.stepsTotal ? `${row.stepsDone} of ${row.stepsTotal} steps` : '',
+        row.progress ? `${row.progress.hours.toFixed(1)} h${row.progress.reached ? ` · ${row.progress.reached}` : ''}` : '',
+        row.target ? `${row.thisWeek} of ${row.target} this week` : `${row.thisWeek} this week`,
+        row.next ? `next: ${row.next}` : 'not on your week',
+        !row.track.ongoing && row.status.state === 'running' ? row.status.text : row.status.state === 'upcoming' ? row.status.text : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')}
+    </p>
   </section>
 {/each}
 
-<section class="card plan-card">
-  {@render title('books', activeTracks.length ? 'More practice' : 'Practice', '#/tracks')}
-  <p class="small muted">
-    {#if finishedTracks.length}Finished: {finishedTracks.map((row) => row.track.name).join(', ')}.{/if}
-    Short tracks like the driving month. Add one on the Practice page.
-  </p>
-</section>
+{#if finished.length}
+  <p class="small muted">Finished: {finished.map((row) => row.track.name).join(', ')}.</p>
+{/if}
+
+<p class="add-practice">
+  <a class="button secondary" href="#/tracks/new"><Icon name="plus" />Add a track</a>
+  {#if tracks.current.length}<a class="small" href="#/tracks">All tracks</a>{/if}
+</p>
+{#if !tracks.current.length}
+  <p class="muted small">Tracks are anything you work at: a course, a language, a practice. Add one, then put it on your week.</p>
+{/if}

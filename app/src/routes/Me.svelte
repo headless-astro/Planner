@@ -1,19 +1,22 @@
 <script lang="ts">
-  // The Me tab (F35): health, exercise, goals and food at a glance. Nothing is set up here;
-  // that's in Settings.
+  // The Me tab (F35, F58): health first, then shortcuts to the exercise plan, shopping and
+  // recipes, then your goals, shown big. Nothing is set up here; that's in Settings.
   import GoalList from '../components/GoalList.svelte'
   import Icon, { type IconName } from '../components/Icon.svelte'
   import WeightChart from '../components/WeightChart.svelte'
   import { formatShort, parseDate } from '../lib/dates'
   import type { Measurement, Recipe, Staple } from '../lib/db'
+  import { DEFAULT_EXERCISE, blockText } from '../lib/exercise'
+  import { ALL_FEATURES } from '../lib/features'
   import { getHealthSummary, type HealthSummary, type MeasureSummary, type Tally } from '../lib/health'
   import { live } from '../lib/live.svelte'
-  import { buildDay, primerWeek } from '../lib/plan'
+  import { buildDay } from '../lib/plan'
   import { listRecipes } from '../lib/recipes'
-  import { getMeasurements, getWeek } from '../lib/repo'
-  import { PRIMER_WEEKS, type DayTemplate } from '../lib/setup'
-  import { listStaples } from '../lib/staples'
-  import { nextDayWhere, dayLabel } from '../lib/summary'
+  import { getExercise, getFeatures, getMeasurements, getTargets, getWeek } from '../lib/repo'
+  import { DEFAULT_TARGETS, type DayTemplate } from '../lib/setup'
+  import { isToBuy, listStaples } from '../lib/staples'
+  import { dayLabel, nextDayWhere } from '../lib/summary'
+  import { countText } from '../lib/week'
 
   let { today }: { today: string } = $props()
 
@@ -26,16 +29,23 @@
   )
   const weights = live(() => () => getMeasurements('weight'), [] as Measurement[])
   const week = live<DayTemplate[] | null>(() => getWeek, null)
+  const exercise = live(() => getExercise, DEFAULT_EXERCISE)
   const recipes = live(() => listRecipes, [] as Recipe[])
   const staples = live(() => listStaples, [] as Staple[])
+  const features = live(() => getFeatures, ALL_FEATURES)
+  const targets = live(() => getTargets, DEFAULT_TARGETS)
+  const on = $derived(features.current)
 
   const points = $derived(weights.current.map((row) => ({ date: row.date, value: row.value })))
-  const toBuy = $derived(staples.current.filter((staple) => staple.low).length)
+  const toBuy = $derived(staples.current.filter(isToBuy).length)
 
-  // Exercise: where the block is, and today's or the next workout.
-  const primer = $derived(primerWeek(parseDate(today)))
+  // Today's workout from the active block, or when the next one is.
   const todayWorkout = $derived(
-    week.current ? (buildDay(parseDate(today), { week: week.current }).morning.find((item) => item.id === 'workout') ?? null) : null,
+    week.current
+      ? (buildDay(parseDate(today), { week: week.current, exercise: exercise.current, features: features.current }).morning.find(
+          (item) => item.id === 'workout',
+        ) ?? null)
+      : null,
   )
   const nextWorkout = $derived.by(() => {
     if (!week.current || todayWorkout) return null
@@ -43,52 +53,49 @@
     return date ? dayLabel(date, today) : null
   })
 
-  /** "−1.2" / "+0.4" / "±0.0" */
-  const signed = (value: number) => `${value > 0 ? '+' : value < 0 ? '−' : '±'}${Math.abs(value).toFixed(1)}`
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+  /** "↓ 0.6 kg since Sat 31 Oct", against the one before the latest. */
+  function stepText(summary: MeasureSummary, unit: string): string {
+    if (summary.step === null || !summary.previous) return `on ${formatShort(parseDate(summary.latest.date))}`
+    const since = `since ${formatShort(parseDate(summary.previous))}`
+    if (Math.abs(summary.step) < 0.05) return `no change ${since}`
+    return `${summary.step < 0 ? '↓' : '↑'} ${Math.abs(summary.step).toFixed(1)} ${unit} ${since}`
+  }
 </script>
 
 {#snippet measure(label: string, summary: MeasureSummary | null, unit: string, empty: string)}
-  <div class="tile">
+  <a class="tile tile-link" href="#/insights" aria-label="{label}: see the trend in Insights">
     <span class="tile-label">{label}</span>
     {#if summary}
       <span class="tile-value">{summary.latest.value} {unit}</span>
-      <span class="tile-note">
-        {formatShort(parseDate(summary.latest.date))}{summary.change !== null
-          ? ` · ${signed(summary.change)} since ${formatShort(parseDate(summary.since))}`
-          : ''}
-      </span>
+      <span class="tile-note" class:down={(summary.step ?? 0) < 0} class:up={(summary.step ?? 0) > 0}>{stepText(summary, unit)}</span>
     {:else}
       <span class="tile-value">–</span>
       <span class="tile-note">{empty}</span>
     {/if}
-  </div>
+  </a>
 {/snippet}
 
 {#snippet tally(label: string, value: Tally, note: string)}
   <div class="tile">
     <span class="tile-label">{label}</span>
-    <span class="tile-value">{value.done} of {value.of}</span>
+    <span class="tile-value">{countText(value.done)} of {value.of}</span>
     <span class="tile-note">{note}</span>
   </div>
 {/snippet}
 
-{#snippet link(icon: IconName, text: string, detail: string, href: string)}
-  <li>
-    <a class="icon-row" {href}>
-      <Icon name={icon} />
-      <span class="text grow">
-        <span class="label">{text}</span>
-        <span class="detail">{detail}</span>
-      </span>
-      <span class="chevron" aria-hidden="true">›</span>
-    </a>
-  </li>
+{#snippet shortcut(icon: IconName, label: string, detail: string, href: string)}
+  <a class="card shortcut" {href}>
+    <Icon name={icon} />
+    <span class="label">{label}</span>
+    <span class="detail">{detail}</span>
+  </a>
 {/snippet}
 
 <header>
   <h1>Me</h1>
-  <p class="date">Your health, exercise, goals and food at a glance. Setup lives in Settings.</p>
+  <p class="date">Your health first, then exercise, shopping, recipes and your goals. Setup lives in Settings.</p>
 </header>
 
 <section>
@@ -96,47 +103,51 @@
   {#if health.current}
     {@const numbers = health.current}
     <div class="tiles">
-      {@render measure('Weight', numbers.weight, 'kg', 'Weigh-ins go in on Saturdays')}
-      {@render measure('Waist', numbers.waist, 'cm', 'Next to a Saturday weigh-in')}
-      {@render tally('Workouts', numbers.workouts, 'this week')}
-      {@render tally('Meds', numbers.meds, 'doses this week so far')}
-      {@render tally('Food rules kept', numbers.foodRules, 'days this week so far')}
+      {#if on.body}
+        {@render measure('Weight', numbers.weight, 'kg', 'Weigh-ins go in on Saturdays')}
+        {@render measure('Waist', numbers.waist, 'cm', 'Next to a Saturday weigh-in')}
+      {/if}
+      {#if on.exercise}{@render tally('Workouts', numbers.workouts, 'this week')}{/if}
+      {#if numbers.meds.of}{@render tally('Meds', numbers.meds, 'doses this week so far')}{/if}
+      {#if on.food}{@render tally('Food guidelines', numbers.foodRules, 'days mostly followed so far')}{/if}
+      {#if on.energy}
+        <div class="tile">
+          <span class="tile-label">Energy</span>
+          <span class="tile-value">{numbers.energy === null ? '–' : numbers.energy.toFixed(1)}</span>
+          <span class="tile-note">{numbers.energy === null ? 'Rate it on Today' : 'average this week, out of 3'}</span>
+        </div>
+      {/if}
     </div>
   {/if}
-  {#if points.length >= 2}
+  {#if on.body && points.length >= 2}
     <div class="me-chart">
-      <WeightChart {points} />
+      <WeightChart {points} pace={targets.current.weeklyLoss ?? null} />
     </div>
   {/if}
+  <p class="small"><a href="#/insights">See the trends in Insights →</a></p>
 </section>
 
 <section>
-  <h2>Exercise</h2>
-  <ul class="list more-list">
-    {@render link(
-      'barbell',
-      'Exercise plan',
-      primer < 1 ? 'Primer 2 starts soon' : primer > PRIMER_WEEKS ? 'Primer 2 is finished' : `Primer 2 · week ${primer} of ${PRIMER_WEEKS}`,
-      '#/exercise',
-    )}
-  </ul>
-  {#if todayWorkout}
-    <p class="small">Today: {todayWorkout.label.replace('Workout → ', '')}</p>
-  {:else if week.current}
-    <p class="small muted">Rest day today{nextWorkout ? `. Next workout: ${nextWorkout}` : ''}.</p>
+  {#if on.exercise || on.shopping || on.recipes}
+    <div class="shortcuts">
+      {#if on.exercise}{@render shortcut('barbell', 'Exercise', blockText(exercise.current, today), '#/exercise')}{/if}
+      {#if on.shopping}{@render shortcut('notepad', 'Shopping', toBuy ? `${toBuy} to buy` : 'Nothing to buy', '#/shopping')}{/if}
+      {#if on.recipes}{@render shortcut('notebook', 'Recipes', plural(recipes.current.length, 'recipe'), '#/recipes')}{/if}
+    </div>
+  {/if}
+  {#if on.exercise}
+    {#if todayWorkout}
+      <p class="small">Today's workout: {todayWorkout.label.replace('Workout → ', '')}</p>
+    {:else if week.current}
+      <p class="small muted">Rest day today{nextWorkout ? `. Next workout: ${nextWorkout}` : ''}.</p>
+    {/if}
   {/if}
 </section>
 
-<section>
-  <h2>Goals</h2>
-  <GoalList {today} />
-  <p class="small muted">Change them in <a href="#/goals">Settings → Goals</a>.</p>
-</section>
-
-<section>
-  <h2>Food</h2>
-  <ul class="list more-list">
-    {@render link('notebook', 'Recipes', plural(recipes.current.length, 'recipe'), '#/recipes')}
-    {@render link('notepad', 'Shopping', toBuy ? `${toBuy} to buy` : 'Nothing to buy right now', '#/shopping')}
-  </ul>
-</section>
+{#if on.goals}
+  <section>
+    <h2>Goals</h2>
+    <GoalList {today} />
+    <p class="small muted">Change them, or give one a target, in <a href="#/goals">Settings → Goals</a>.</p>
+  </section>
+{/if}

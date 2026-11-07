@@ -1494,7 +1494,72 @@ table.numbers th[scope='row'] {
   border-radius: 8px;
 }
 
-/* Today's three parts, each with its own pastel (F28) */
+/* Today's three parts, each with its own pastel (F28), as tabs (F44) */
+
+.part-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 20px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.part-tab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 52px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.part-count {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.part-tab.morning[aria-selected='true'] {
+  background: var(--morning);
+  color: var(--morning-text);
+}
+
+.part-tab.anytime[aria-selected='true'] {
+  background: var(--anytime);
+  color: var(--anytime-text);
+}
+
+.part-tab.evening[aria-selected='true'] {
+  background: var(--evening);
+  color: var(--evening-text);
+}
+
+.part-tab:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.part-panel {
+  margin-top: 12px;
+}
+
+.snack-add .kcal {
+  width: 96px;
+}
+
+.snack-add + .inline-check {
+  margin-top: 8px;
+}
 
 .part > h2 {
   display: inline-block;
@@ -1716,4 +1781,918 @@ table.numbers th[scope='row'] {
 
 .media-subtabs .fav-tab {
   flex: 0 0 56px;
+}
+
+/* Upcoming (F47) */
+
+.up-items li + li {
+  border-top: 1px solid var(--line);
+}
+
+.up-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.up-item::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.up-item.plan::before {
+  background: var(--accent-text);
+}
+
+.up-item.routine::before {
+  background: var(--anytime-text);
+}
+
+.up-item.task::before {
+  background: var(--morning-text);
+}
+
+.upcoming-late h2 {
+  margin: 12px 0 4px;
+  color: var(--warn);
+}
+
+.upcoming-day.is-today .plan-title {
+  color: var(--accent-text);
+}
+
+/* The + button that opens an add form (F52) */
+
+.with-add {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.with-add > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+
+.add-toggle .icon {
+  width: 22px;
+  height: 22px;
+  transition: transform 0.15s;
+}
+
+.add-toggle[aria-expanded='true'] .icon {
+  transform: rotate(45deg);
+}
+
+.add-toggle:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.add-practice {
+  margin-top: 16px;
+}
+
+a.button .icon,
+.button .icon {
+  width: 18px;
+  height: 18px;
+  vertical-align: -3px;
+  margin-right: 4px;
+}
+
+/* More: four sub-tabs (F51) and Letterboxd folded away */
+
+.media-subtabs a {
+  padding: 4px 6px;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.media-subtabs .fav-tab {
+  flex: 0 0 48px;
+}
+
+details.letterboxd {
+  display: block;
+}
+
+details.letterboxd > summary {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+details.letterboxd[open] > summary {
+  margin-bottom: 8px;
+}
+
+details.letterboxd > :not(summary) + * {
+  margin-top: 8px;
+}
+
+details.letterboxd > summary::after {
+  content: '›';
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+
+details.letterboxd[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+details.letterboxd > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Routines: when it's due is the main thing (a pill); editing hides behind a pencil */
+
+.due-pill {
+  align-self: flex-start;
+  margin: 4px 0 3px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.due-pill.late {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+
+.due-pill.today {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.due-pill.soon {
+  background: var(--morning);
+  color: var(--morning-text);
+}
+
+.due-pill.later {
+  background: var(--anytime);
+  color: var(--anytime-text);
+}
+
+.due-pill.done,
+.due-pill.new {
+  font-weight: 600;
+}
+
+.routine-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-button.pencil {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.icon-button.pencil .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.icon-button.pencil[aria-expanded='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.routine-edit {
+  margin: 0;
+  padding: 0 14px 14px;
+}
+
+/* Insights (F53) */
+
+.period-seg {
+  display: flex;
+  margin-top: 12px;
+}
+
+.period-seg button {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 6px;
+}
+
+.insight-list {
+  padding: 4px 14px;
+}
+
+.insight-list li {
+  padding: 10px 0;
+}
+
+.insight-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.insight-list.wins li::before {
+  content: '✓';
+  margin-right: 8px;
+  color: var(--anytime-text);
+  font-weight: 700;
+}
+
+.insight-list.slipping a {
+  color: var(--text);
+}
+
+.habit-list {
+  padding: 4px 14px;
+}
+
+.habit-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+}
+
+.habit-strip + .habit-strip {
+  border-top: 1px solid var(--line);
+}
+
+.habit-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.habit-value {
+  flex: none;
+  font-weight: 700;
+  color: var(--accent-text);
+}
+
+.habit-value.on-target {
+  color: var(--anytime-text);
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 28px;
+}
+
+.bar-cell {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  max-width: 28px;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+
+.bar-cell > span {
+  width: 100%;
+  background: var(--accent-text);
+}
+
+.bar-cell.full > span {
+  background: var(--anytime-text);
+}
+
+.bar-cell.now {
+  opacity: 0.5;
+}
+
+.bar-cell.blank {
+  background: transparent;
+  border: 1px dashed var(--line);
+}
+
+.review-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.measure-list {
+  margin-top: 10px;
+  padding: 10px 14px;
+}
+
+.measure-list summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.measure-list .table-wrap {
+  margin-top: 8px;
+}
+
+/* The month calendar */
+
+.month {
+  margin-top: 12px;
+  padding: 8px 10px 4px;
+}
+
+.month-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.month-title {
+  font-weight: 700;
+}
+
+.month-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.month-grid th {
+  padding: 4px 0;
+  border: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.month-grid td {
+  padding: 2px;
+  border: 0;
+  text-align: center;
+}
+
+.month-day {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.month-day.logged {
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.month-day.is-today {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -2px;
+}
+
+.month-day.future {
+  color: var(--muted);
+  opacity: 0.5;
+}
+
+.month-drop {
+  display: inline-flex;
+  color: var(--warn);
+}
+
+.month-day .month-drop {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+}
+
+.month-drop .icon {
+  width: 10px;
+  height: 10px;
+}
+
+.month-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 4px;
+}
+
+.key-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+}
+
+/* Energy and the period drop on Today (F55, F56) */
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.period-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.period-toggle[aria-pressed='true'] {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn);
+}
+
+.period-toggle .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.hint-line {
+  margin: 6px 0 0;
+}
+
+/* The weekly review (F54) */
+
+.last-said {
+  margin: 0;
+  font-weight: 600;
+}
+
+.late-task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 14px;
+}
+
+.late-task .text {
+  flex: 1 1 160px;
+}
+
+.late-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.late-actions input[type='date'] {
+  width: 150px;
+}
+
+.next-week li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.review-done {
+  margin-top: 24px;
+}
+
+.area-list {
+  margin-top: 14px;
+}
+
+.review-top {
+  margin-top: 16px;
+}
+
+/* Upcoming as one list (F47, your feedback 7 Nov) */
+
+.up-list {
+  margin-top: 12px;
+  padding: 0 14px;
+}
+
+.up-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.up-row:not(.new-day) {
+  border-top: 1px dashed var(--line);
+}
+
+.up-row.new-day:not(:first-child) {
+  border-top: 1px solid var(--line);
+}
+
+.up-when {
+  flex: none;
+  width: 84px;
+  padding: 12px 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.up-row.is-today .up-when {
+  color: var(--accent-text);
+}
+
+.late-when {
+  color: var(--warn);
+}
+
+.up-row .up-item {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Exercise blocks (F59) */
+
+.block-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+
+.block-bar p {
+  flex: 1 1 200px;
+  margin: 0;
+}
+
+.block-edit .field input,
+.move-edit > input {
+  width: 100%;
+}
+
+.move-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.move-edit > .link {
+  align-self: flex-start;
+}
+
+.week-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.week-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.week-inputs input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Goals, shown big (F58) */
+
+.goal-progress {
+  color: inherit;
+  text-decoration: none;
+}
+
+.goal-value {
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent-text);
+}
+
+.goal-progress.big .goal-value {
+  font-size: 1.7rem;
+  line-height: 1.2;
+}
+
+.goal-text {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.goal-bar {
+  width: 100%;
+  height: 8px;
+  margin: 8px 0 2px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+
+.goal-bar div {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--anytime-text);
+}
+
+.goal-children li .goal-progress {
+  margin-top: 2px;
+}
+
+.goal-target input {
+  width: 90px;
+}
+
+/* Recipes in More (F61) */
+
+.recipe-shop {
+  align-self: flex-start;
+}
+
+.recipe-note {
+  margin: 0;
+  padding: 0 14px 6px;
+}
+
+.shopping-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.shopping-pick p {
+  margin: 0;
+}
+
+.meal-filter {
+  margin-top: 10px;
+}
+
+.recipes {
+  margin-top: 12px;
+}
+
+/* Me: health first, shortcuts, goals (F58) */
+
+a.tile-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tile-note.down {
+  color: var(--anytime-text);
+  font-weight: 600;
+}
+
+.tile-note.up {
+  color: var(--morning-text);
+  font-weight: 600;
+}
+
+.shortcuts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.shortcut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 14px 6px;
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+}
+
+.shortcut .icon {
+  width: 28px;
+  height: 28px;
+  color: var(--accent-text);
+}
+
+.shortcut .label {
+  font-weight: 700;
+}
+
+.shortcut .detail {
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+/* Me: health first, shortcuts, goals (F58) */
+
+a.tile-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tile-note.down {
+  color: var(--anytime-text);
+  font-weight: 600;
+}
+
+.tile-note.up {
+  color: var(--morning-text);
+  font-weight: 600;
+}
+
+.shortcuts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.shortcut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 14px 6px;
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+}
+
+.shortcut .icon {
+  width: 28px;
+  height: 28px;
+  color: var(--accent-text);
+}
+
+.shortcut .label {
+  font-weight: 700;
+}
+
+.shortcut .detail {
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+/* The first start (F62) */
+
+.welcome {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.welcome-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.welcome-choice .label {
+  font-weight: 700;
+}
+
+.welcome-choice:first-child {
+  border-color: var(--accent-text);
+}
+
+.tabs[hidden] {
+  display: none;
+}
+
+/* What you use (F63) */
+
+.feature-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.feature-group .feature {
+  align-items: flex-start;
+  padding: 6px 0;
+}
+
+.feature-group .feature input {
+  margin-top: 3px;
+}
+
+/* Tracks (F69) */
+
+a.track-link {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.track-settings {
+  margin-top: 16px;
+}
+
+.track-settings > summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.track-settings .edit-panel {
+  margin-top: 12px;
+}
+
+/* The week's activities (F70) */
+
+.activity-list {
+  margin: 4px 0 8px;
+}
+
+.activity-edit {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.activity-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.activity-head .label {
+  font-weight: 600;
+}
+
+.activity-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.activity-fields select,
+.activity-fields input {
+  width: 100%;
+  min-width: 0;
+}
+
+.add-activity select {
+  width: 100%;
 }

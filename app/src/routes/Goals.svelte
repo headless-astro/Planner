@@ -1,12 +1,24 @@
 <script lang="ts">
-  import type { Goal } from '../lib/db'
-  import { GOAL_MEASURES, addGoal, deleteGoal, goalTree, listGoals, moveGoal, updateGoal } from '../lib/goals'
+  import type { Goal, Track } from '../lib/db'
+  import { listTracks } from '../lib/tracks'
+  import { addGoal, goalMeasures, targetMeaning, deleteGoal, goalTree, listGoals, moveGoal, updateGoal } from '../lib/goals'
+  import { ALL_FEATURES, type Feature } from '../lib/features'
   import { live } from '../lib/live.svelte'
+  import { getFeatures } from '../lib/repo'
   import type { GoalMeasure } from '../lib/setup'
 
   let { today }: { today: string } = $props()
 
-  const MEASURES = Object.entries(GOAL_MEASURES) as [GoalMeasure, string][]
+  /** The part of the app a fixed progress line comes from (F63); tracks are always there. */
+  const MEASURE_FEATURE: Partial<Record<GoalMeasure, Feature>> = { weight: 'body', fitness: 'exercise', 'food-rules': 'food', reading: 'books' }
+  const features = live(() => getFeatures, ALL_FEATURES)
+  const tracks = live(() => listTracks, [] as Track[])
+  const MEASURES = $derived(
+    goalMeasures(tracks.current).filter(([id]) => {
+      const feature = MEASURE_FEATURE[id]
+      return !feature || features.current[feature]
+    }),
+  )
 
   const goals = live(() => listGoals, [] as Goal[])
   const tree = $derived(goalTree(goals.current))
@@ -47,6 +59,22 @@
       <option value="">No progress line</option>
       {#each MEASURES as [id, label] (id)}<option value={id}>{label}</option>{/each}
     </select>
+    {#if goal.measure}
+      <label class="inline goal-target">
+        Target
+        <input
+          type="number"
+          step="any"
+          value={goal.target ?? ''}
+          aria-label="Target for {goal.title}"
+          onchange={(event) => {
+            const value = event.currentTarget.value === '' ? null : Number(event.currentTarget.value)
+            void updateGoal(goal.id, { target: value !== null && Number.isFinite(value) ? value : null })
+          }}
+        />
+        <span class="hint">{targetMeaning(goal.measure, tracks.current)} (optional)</span>
+      </label>
+    {/if}
     <input
       class="goal-notes"
       type="text"

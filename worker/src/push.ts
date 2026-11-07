@@ -92,7 +92,7 @@ const isTimeZone = (value: unknown): value is string => {
   }
 }
 
-export async function subscribe(request: Request, env: Env, body: unknown): Promise<void> {
+export async function subscribe(request: Request, env: Env, space: string, body: unknown): Promise<void> {
   const subscription = isObject(body) && isObject(body.subscription) ? body.subscription : null
   const keys = subscription && isObject(subscription.keys) ? subscription.keys : null
   if (!subscription || !keys || !isHttpsUrl(subscription.endpoint) || typeof keys.p256dh !== 'string' || typeof keys.auth !== 'string') {
@@ -101,10 +101,10 @@ export async function subscribe(request: Request, env: Env, body: unknown): Prom
   const timezone = isObject(body) && isTimeZone(body.timezone) ? body.timezone : null
   if (!timezone) throw new HttpError(400, 'Unknown time zone.')
   await env.DB.prepare(
-    `INSERT INTO subscriptions (endpoint, p256dh, auth, timezone, created_at) VALUES (?1, ?2, ?3, ?4, ?5)
-     ON CONFLICT (endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, timezone = excluded.timezone`,
+    `INSERT INTO subscriptions (endpoint, p256dh, auth, timezone, created_at, space) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+     ON CONFLICT (endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, timezone = excluded.timezone, space = excluded.space`,
   )
-    .bind(subscription.endpoint, keys.p256dh.slice(0, 200), keys.auth.slice(0, 200), timezone, Date.now())
+    .bind(subscription.endpoint, keys.p256dh.slice(0, 200), keys.auth.slice(0, 200), timezone, Date.now(), space)
     .run()
   const origin = request.headers.get('Origin')
   if (origin && isHttpsUrl(origin)) await setMeta(env, 'app_url', origin)
@@ -115,16 +115,16 @@ const endpointOf = (body: unknown): string => {
   return body.endpoint
 }
 
-export async function unsubscribe(env: Env, body: unknown): Promise<void> {
-  await env.DB.prepare('DELETE FROM subscriptions WHERE endpoint = ?1').bind(endpointOf(body)).run()
+export async function unsubscribe(env: Env, space: string, body: unknown): Promise<void> {
+  await env.DB.prepare('DELETE FROM subscriptions WHERE endpoint = ?1 AND space = ?2').bind(endpointOf(body), space).run()
 }
 
 /** Sends one push to a device now, so you can see reminders work. */
-export async function sendTest(env: Env, body: unknown): Promise<PushResult> {
+export async function sendTest(env: Env, space: string, body: unknown): Promise<PushResult> {
   const endpoint = endpointOf(body)
-  const known = await env.DB.prepare('SELECT 1 AS known FROM subscriptions WHERE endpoint = ?1').bind(endpoint).first<number>('known')
+  const known = await env.DB.prepare('SELECT 1 AS known FROM subscriptions WHERE endpoint = ?1 AND space = ?2').bind(endpoint, space).first<number>('known')
   if (!known) throw new HttpError(404, 'This device hasn’t turned reminders on.')
   const result = await sendPush(env, endpoint)
-  if (result === 'gone') await unsubscribe(env, { endpoint })
+  if (result === 'gone') await unsubscribe(env, space, { endpoint })
   return result
 }

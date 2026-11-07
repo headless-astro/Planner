@@ -1,27 +1,11 @@
 // Builds the plan for a day from the setup. Plain functions, so they're easy to test.
-import { WEEKDAYS, addDays, daysBetween, formatDate, parseDate, weekSince, weekStart, weekdayIndex } from './dates'
-import {
-  CARDIO,
-  DEFAULT_DOSES,
-  DEFAULT_DRAWING_AREAS,
-  DEFAULT_TOPICS,
-  DEFAULT_TRACKS,
-  LONG_CARDIO,
-  PRIMER_START,
-  PRIMER_WEEKS,
-  SPANISH_BOOK_FLOOR,
-  SPANISH_FLOORS,
-  STRENGTH_MOVES,
-  STRENGTH_ROUNDS,
-  TECH_FLOOR,
-  WARM_UP,
-  WEEK_TEMPLATE,
-  YOGA_TIPS,
-  type DayTemplate,
-  type MorningBlock,
-  type SpanishKind,
-  type TimeOfDay,
-} from './setup'
+import { customKey, dayActivities, isReviewDay } from './activities'
+import { WEEKDAYS, addDays, formatDate, weekStart, weekdayIndex, toISODate } from './dates'
+import type { Topic, Track, TrackSession } from './db'
+import { BLOCK_WEEKS, DEFAULT_EXERCISE, blockNow, type ExercisePlan } from './exercise'
+import { ALL_FEATURES, dayWithFeatures, type Features } from './features'
+import { DEFAULT_DOSES, WEEK_TEMPLATE, type Activity, type DayTemplate, type TimeOfDay } from './setup'
+import { focusFor, isRunning, stepForDay, stepsOf, trackStatus } from './tracks'
 
 /** A med dose as the plan needs it; the full records live in the database. */
 export interface DoseLike {
@@ -30,29 +14,23 @@ export interface DoseLike {
   time: TimeOfDay
 }
 
-/** A practice track as the plan needs it. */
-export interface TrackLike {
-  id: string
-  name: string
-  start: string
-  weeks: number
-  /** Monday = 0 … Sunday = 6. */
-  weekdays: readonly number[]
-  focus: readonly string[]
-}
+/** A track as the plan needs it. */
+export type TrackLike = Pick<Track, 'id' | 'name' | 'start' | 'weeks' | 'weekdays' | 'focus' | 'ongoing' | 'loop' | 'focusNotes'>
 
 /** The setup a day is built from; anything left out uses the starting setup. */
 export interface DaySetup {
-  /** The week's rhythm, Monday first (F30). */
+  /** The week's rhythm, Monday first (F30), with its activities (F70). */
   week?: readonly DayTemplate[]
   doses?: readonly DoseLike[]
   tracks?: readonly TrackLike[]
-  /** The tech study topic for the day; null once every topic is done. */
-  studyTopic?: { number: number; title: string } | null
-  /** What the day's Spanish book session is, e.g. "unit 3". */
-  bookSession?: string
-  /** The drawing area for the day's session; null when there are no areas. */
-  drawingArea?: { name: string; exercises: readonly string[] } | null
+  /** Every track's steps (topics), for activities that move through steps. */
+  steps?: readonly Topic[]
+  /** Sessions, for a looping focus. */
+  sessions?: readonly TrackSession[]
+  /** The exercise blocks and which one is active (F59). */
+  exercise?: ExercisePlan
+  /** What's turned on (F63); everything by default. */
+  features?: Features
 }
 
 export interface PlanItem {
@@ -68,8 +46,12 @@ export interface PlanItem {
   link?: { href: string; text: string }
   /** A number to note once the item is ticked. */
   input?: 'minutes' | 'pages'
-  /** For the Spanish floor: which kind of practice it is. */
-  practice?: SpanishKind
+  /** The week's activity it comes from (F70). */
+  activity?: Activity
+  /** For a track's activity: the track. */
+  trackId?: string
+  /** For an activity in your own words: what its tick is kept under. */
+  tickKey?: string
 }
 
 export interface DayPlan {
@@ -83,144 +65,97 @@ export interface DayPlan {
   foodRules: boolean
 }
 
-function morningBlock(template: DayTemplate, date: Date, setup: DaySetup): PlanItem | null {
-  switch (template.morning) {
-    case 'tech': {
-      const topic = setup.studyTopic === undefined ? DEFAULT_TOPICS[0] : setup.studyTopic
-      if (!topic) return { id: 'study', label: 'Tech study → every topic is done', detail: '30 min · go over the topics flagged for revision', link: { href: '#/study', text: 'Open tech study' } }
-      return {
-        id: 'study',
-        label: `Tech study → #${topic.number} ${topic.title}`,
-        detail: `30 min · floor: ${TECH_FLOOR}`,
-        link: { href: `#/study/${topic.number}`, text: 'Open notes' },
-      }
-    }
-    case 'spanish-book':
-      return {
-        id: 'spanish-book',
-        label: `Spanish book → ${setup.bookSession ?? 'review session 1 of 2'}`,
-        detail: `30 min · floor: ${SPANISH_BOOK_FLOOR}`,
-      }
-    case 'drawing': {
-      // Until the areas have loaded, the plan shows the first starting area.
-      const area = setup.drawingArea === undefined ? DEFAULT_DRAWING_AREAS[0] : setup.drawingArea
-      const link = { href: '#/drawing', text: 'Open the drawing plan' }
-      if (!area) return { id: 'drawing-study', label: 'Drawing study', detail: '30 min', link }
-      return {
-        id: 'drawing-study',
-        label: `Drawing → ${area.name}`,
-        detail: '30 min · this week’s area',
-        steps: area.exercises.length ? [...area.exercises] : undefined,
-        stepsLabel: 'Show exercises',
-        link,
-      }
-    }
-    case 'review':
-      return { id: 'review', label: 'Weekly review', detail: '10 min', link: { href: '#/review', text: 'Open the review' } }
-    case 'free':
-      return null
+/** One of the week's activities on a day (F70): a track's session, or your own. */
+function activityItem(activity: Activity, date: Date, setup: DaySetup): PlanItem | null {
+  const iso = toISODate(date)
+  const note = activity.note?.trim()
+  const input = activity.log === 'minutes' || activity.log === 'pages' ? activity.log : undefined
+  if (!activity.trackId) {
+    const text = activity.text?.trim()
+    if (!text) return null
+    return { id: `act:${activity.id}`, label: note ? `${text} · ${note}` : text, activity, tickKey: customKey(text), input }
+  }
+  const track = (setup.tracks ?? []).find((candidate) => candidate.id === activity.trackId)
+  if (!track || !isRunning(track, iso)) return null
+  const name = note ? `${track.name} · ${note}` : track.name
+  const step = activity.log === 'step' ? stepForDay(stepsOf(track.id, setup.steps ?? []), iso) : null
+  const focus = focusFor(track, (setup.sessions ?? []).filter((session) => session.trackId === track.id), iso)
+  const status = trackStatus(track, iso)
+  const detail = [!track.ongoing && status.week ? `week ${status.week} of ${track.weeks}` : '', focus ? `Focus: ${focus.name}` : '']
+    .filter(Boolean)
+    .join(' · ')
+  const notes = focus?.notes
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  return {
+    id: `act:${activity.id}`,
+    label: step ? `${name} → ${step.title}` : activity.log === 'step' && setup.steps ? `${name} · every step is done` : name,
+    detail: detail || undefined,
+    steps: notes?.length ? notes : undefined,
+    stepsLabel: notes?.length ? `About ${focus?.name}` : undefined,
+    link: step ? { href: `#/step/${step.id}`, text: 'Open notes' } : { href: `#/track/${track.id}`, text: 'Open the track' },
+    input,
+    activity,
+    trackId: track.id,
   }
 }
 
-/** The week of Primer 2 a date is in: 1–4 while it runs, below 1 before, above 4 after. */
-export const primerWeek = (date: Date) => weekSince(parseDate(PRIMER_START), date)
-
-function workout(template: DayTemplate, date: Date): PlanItem | null {
+/** The day's workout from the active exercise block (F59). Nothing before the block starts. */
+function workout(template: DayTemplate, date: Date, exercise: ExercisePlan): PlanItem | null {
   if (template.workout === 'rest') return null
-  const week = primerWeek(date)
-  if (week < 1) return null
-  if (week > PRIMER_WEEKS) {
-    return { id: 'workout', label: 'Workout', detail: 'Primer 2 is finished; the next block isn’t set yet' }
-  }
+  const { block, week } = blockNow(exercise, date)
+  if (week === null) return null
   const i = week - 1
-  const program = `Primer 2 · week ${week}`
+  const program = `${block.name} · week ${week} of ${BLOCK_WEEKS}`
   switch (template.workout) {
     case 'strength':
       return {
         id: 'workout',
-        label: `Workout → strength, ${STRENGTH_ROUNDS[i]} rounds`,
+        label: `Workout → strength, ${block.rounds[i] ?? ''} rounds`,
         detail: program,
-        steps: [WARM_UP, ...STRENGTH_MOVES.map((move) => `${move.name}: ${move.reps[i]}`), 'Rest 60–90 s between rounds'],
+        steps: [block.warmUp, ...block.moves.map((move) => `${move.name}: ${move.reps[i] ?? ''}`), 'Rest 60–90 s between rounds'].filter(Boolean),
       }
     case 'cardio':
-      return { id: 'workout', label: `Workout → cardio, ${CARDIO[i]}`, detail: `${program} · walk outside or elliptical`, steps: [WARM_UP] }
+      return { id: 'workout', label: `Workout → cardio, ${block.cardio[i] ?? ''}`, detail: `${program} · walk outside or elliptical`, steps: [block.warmUp] }
     case 'long-cardio':
-      return { id: 'workout', label: `Workout → longer cardio, ${LONG_CARDIO[i]}`, detail: `${program} · or badminton`, steps: [WARM_UP] }
+      return { id: 'workout', label: `Workout → longer cardio, ${block.longCardio[i] ?? ''}`, detail: `${program} · or badminton`, steps: [block.warmUp] }
     case 'yoga':
-      return { id: 'workout', label: 'Workout → yoga or pilates, 30 min', detail: `${program} · wrist-friendly`, steps: YOGA_TIPS }
+      return { id: 'workout', label: 'Workout → yoga or pilates, 30 min', detail: `${program} · wrist-friendly`, steps: block.yoga }
   }
-}
-
-/** Where a track is on a date: its week, if the date is one of its practice days. */
-export function trackDay(track: TrackLike, date: Date): { week: number; focus: string | null } | null {
-  const days = daysBetween(parseDate(track.start), date)
-  if (days < 0) return null
-  const week = Math.floor(days / 7) + 1
-  if (week > track.weeks || !track.weekdays.includes(weekdayIndex(date))) return null
-  return { week, focus: track.focus[week - 1] ?? null }
-}
-
-/** Item ids for practice tracks are "track:<track id>". */
-export const TRACK_ITEM_PREFIX = 'track:'
-
-function trackItems(tracks: readonly TrackLike[], date: Date): PlanItem[] {
-  return tracks.flatMap((track) => {
-    const day = trackDay(track, date)
-    if (!day) return []
-    return [
-      {
-        id: `${TRACK_ITEM_PREFIX}${track.id}`,
-        label: `${track.name} · week ${day.week} of ${track.weeks}`,
-        detail: day.focus ? `Focus: ${day.focus}` : undefined,
-      },
-    ]
-  })
 }
 
 export function buildDay(date: Date, setup: DaySetup = {}): DayPlan {
   const doses = setup.doses ?? DEFAULT_DOSES
-  const tracks = setup.tracks ?? DEFAULT_TRACKS
+  const features = setup.features ?? ALL_FEATURES
   const weekday = weekdayIndex(date)
-  const template = (setup.week ?? WEEK_TEMPLATE)[weekday] ?? WEEK_TEMPLATE[weekday]
-  const morning: PlanItem[] = []
-  const anytime: PlanItem[] = []
-  const evening: PlanItem[] = []
+  const template = dayWithFeatures((setup.week ?? WEEK_TEMPLATE)[weekday] ?? WEEK_TEMPLATE[weekday], features)
+  const parts: Record<TimeOfDay, PlanItem[]> = { morning: [], anytime: [], evening: [] }
 
-  if (template.weighIn) morning.push({ id: 'weigh-in', label: 'Weigh-in', detail: 'after waking, before eating' })
+  if (template.weighIn) parts.morning.push({ id: 'weigh-in', label: 'Weigh-in', detail: 'after waking, before eating' })
 
-  for (const dose of doses) {
-    const item = { id: dose.id, label: dose.label }
-    if (dose.time === 'morning') morning.push(item)
-    else if (dose.time === 'anytime') anytime.push(item)
-    else evening.push(item)
+  for (const dose of doses) parts[dose.time].push({ id: dose.id, label: dose.label })
+
+  for (const activity of dayActivities(template, weekday, setup.tracks ?? [])) {
+    const item = activityItem(activity, date, setup)
+    if (item) parts[activity.part].push(item)
   }
-
-  const block = morningBlock(template, date, setup)
-  if (block) morning.push(block)
-  const session = workout(template, date)
-  if (session) morning.push(session)
-
-  anytime.push({ id: 'skin', label: 'Skin routine' })
-  if (template.spanish) {
-    const input = template.spanish === 'video' ? 'minutes' : template.spanish === 'reading' ? 'pages' : undefined
-    anytime.push({ id: 'spanish', label: SPANISH_FLOORS[template.spanish], input, practice: template.spanish })
+  if (isReviewDay(template)) {
+    parts.morning.push({ id: 'review', label: 'Weekly review', detail: '10 min', link: { href: '#/review', text: 'Open the review' } })
   }
-  anytime.push(...trackItems(tracks, date))
+  const session = workout(template, date, setup.exercise ?? DEFAULT_EXERCISE)
+  if (session) parts.morning.push(session)
 
   return {
     date,
     weekday: WEEKDAYS[weekday],
     dateText: formatDate(date),
-    morning,
-    anytime,
-    evening,
+    morning: parts.morning,
+    anytime: parts.anytime,
+    evening: parts.evening,
     foodRules: template.foodRules,
   }
 }
-
-/** The weekdays (Monday = 0) whose morning slot is a given block. */
-export const daysWith = (week: readonly DayTemplate[], block: MorningBlock) =>
-  week.flatMap((day, index) => (day.morning === block ? [index] : []))
 
 /** Monday to Sunday of the week a date is in. */
 export function weekDates(date: Date): Date[] {

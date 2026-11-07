@@ -42,6 +42,12 @@ export async function readJson(request: Request): Promise<unknown> {
   }
 }
 
+/** Like readJson, but an empty body is fine (older apps claim without one). */
+export async function readJsonOrNothing(request: Request): Promise<unknown> {
+  const text = await request.clone().text()
+  return text.trim() ? readJson(request) : null
+}
+
 export const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 

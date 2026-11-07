@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exportBackup } from './backup'
 import { db, DIRTY } from './db'
 import { addTodo, ensureSeeded, setEntry, toggleTick } from './repo'
-import { connect, getSyncState, linkFor, readLink, serverAddress, syncNow } from './sync'
+import { connect, getSyncState, inviteLinkFor, linkFor, readInvite, readLink, serverAddress, syncNow } from './sync'
 
 // The sync client against a small in-memory server that follows the Worker's rules
 // (the Worker itself is tested in worker/test).
@@ -165,8 +165,20 @@ describe('links and addresses', () => {
   it('carry the server and the key to another device', () => {
     const link = linkFor({ server: SERVER, key: 'k'.repeat(43) }, 'https://me.github.io/planner/#/sync')
     expect(link.startsWith('https://me.github.io/planner/#/link/')).toBe(true)
-    expect(readLink(link.split('#/link/')[1])).toEqual({ server: SERVER, key: 'k'.repeat(43) })
+    expect(readLink(link.split('#/link/')[1])).toEqual({ server: SERVER, key: 'k'.repeat(43), mine: true })
+    // Someone else's device says so, and their new device starts clean instead of with your setup.
+    const theirs = linkFor({ server: SERVER, key: 'k'.repeat(43) }, 'https://me.github.io/planner/', false)
+    expect(readLink(theirs.split('#/link/')[1])?.mine).toBe(false)
     expect(readLink('not-a-link')).toBeNull()
+  })
+
+  it('carry an invite to someone new, without any key', () => {
+    const link = inviteLinkFor({ server: SERVER, code: 'ABCD2345EFGH' }, 'https://me.github.io/planner/#/sync')
+    expect(link.startsWith('https://me.github.io/planner/#/join/')).toBe(true)
+    const payload = link.split('#/join/')[1]
+    expect(readInvite(payload)).toEqual({ server: SERVER, code: 'ABCD2345EFGH' })
+    expect(atob(payload.replaceAll('-', '+').replaceAll('_', '/'))).not.toContain('"k"')
+    expect(readInvite('not-an-invite')).toBeNull()
   })
 
   it('accept a pasted server address, but only a safe one', () => {

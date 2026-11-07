@@ -1,9 +1,10 @@
 <script lang="ts">
   import { untrack } from 'svelte'
+  import { getStart, startDevice } from '../lib/start'
   import { connect, readLink } from '../lib/sync'
 
   // Opened from the link or QR code made on another device (D47).
-  let { payload }: { payload: string } = $props()
+  let { payload, onstarted }: { payload: string; onstarted?: () => void } = $props()
 
   // Read once: the key is taken out of the address bar straight after.
   const config = readLink(untrack(() => payload))
@@ -22,8 +23,12 @@
     busy = true
     error = null
     try {
+      // On a new device, the other one brings everything: nothing is filled in here first.
+      // Your own devices get your setup, as before; anyone else's start clean and sync theirs.
+      if ((await getStart()) === null) await startDevice(config.mine ? 'mine' : 'link')
       await connect(config.server, config.key)
       done = true
+      onstarted?.()
     } catch (problem) {
       error = problem instanceof Error ? problem.message : String(problem)
     } finally {

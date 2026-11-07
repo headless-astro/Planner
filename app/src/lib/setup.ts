@@ -27,12 +27,13 @@ export interface Targets {
   fitness: number
   spanish: number
   study: number
-  skin: number
   /** Daily snack budget in kcal (PLAN.md D30). */
   snackBudget: number
+  /** The weight goal's pace in kg a week, for the chart's goal line; null for none (F64). */
+  weeklyLoss: number | null
 }
 
-export const DEFAULT_TARGETS: Targets = { rules: 6, fitness: 6, spanish: 4, study: 2, skin: 7, snackBudget: 200 }
+export const DEFAULT_TARGETS: Targets = { rules: 6, fitness: 6, spanish: 4, study: 2, snackBudget: 200, weeklyLoss: 0.4 }
 
 export interface Reminders {
   morning: string
@@ -60,9 +61,24 @@ export const DEFAULT_SNACKS: { id: string; name: string; kcal: number }[] = [
 
 // ── The weekly rhythm (PLAN.md 7.0) ──
 
-export type MorningBlock = 'tech' | 'spanish-book' | 'drawing' | 'free' | 'review'
+export type MorningBlock = 'tech' | 'spanish-book' | 'drawing' | 'free' | 'review' | 'custom'
 export type WorkoutKind = 'strength' | 'cardio' | 'yoga' | 'long-cardio' | 'rest'
 export type SpanishKind = 'video' | 'exercise' | 'reading'
+
+/** What a week's activity logs when it's ticked (F70). */
+export type ActivityLog = 'done' | 'step' | 'minutes' | 'pages'
+
+/** One thing on a day of the week: a track, or something in your own words (F70). */
+export interface Activity {
+  id: string
+  part: TimeOfDay
+  trackId?: string
+  /** For your own activities: what it is. */
+  text?: string
+  /** A short note for that day, like "1 video" or "Book". */
+  note?: string
+  log: ActivityLog
+}
 
 export interface DayTemplate {
   morning: MorningBlock
@@ -72,6 +88,12 @@ export interface DayTemplate {
   /** False on the free day. */
   foodRules: boolean
   weighIn: boolean
+  /** The morning slot in your own words, when it's "custom" (F64). */
+  morningText?: string
+  /** The day's activities (F70). Days from before have none, and follow their slots above. */
+  activities?: Activity[]
+  /** The weekly review is on this day; days from before have it as their morning slot. */
+  review?: boolean
 }
 
 /** Monday first. Changed on the Week screen (F30); this is the starting week. */
@@ -91,6 +113,7 @@ export const MORNING_BLOCKS: Record<MorningBlock, string> = {
   'spanish-book': 'Spanish book',
   drawing: 'Drawing',
   review: 'Weekly review',
+  custom: 'Your own…',
   free: 'Free',
 }
 
@@ -109,16 +132,16 @@ export const SPANISH_FLOORS: Record<SpanishKind, string> = {
   reading: 'Spanish: reading book',
 }
 
-// ── Food rules, Monday to Saturday (PLAN.md 7.1, D25). Shown on Today, changed in Setup. ──
+// ── Food guidelines, Monday to Saturday (PLAN.md 7.1, D25, D74). Shown on Today, changed in Setup. ──
 
 export const DEFAULT_FOOD_RULES: string[] = [
   'Three meals, none skipped: a first meal soon after waking, a main meal mid-afternoon, dinner in the evening.',
   'Every meal follows the plate: half vegetables, a quarter protein, a quarter carbs.',
-  'No junk: crisps and chips, pastries, fast food, sugary drinks, and sweets beyond the snack budget.',
-  'Snacks: up to 200 kcal a day in all. Sweet is fine inside the budget, best right after a meal.',
+  'No junk: crisps and chips, pastries, fast food, sugary drinks, and sweets beyond the snack guideline.',
+  'Snacks: about 200 kcal a day in all. Sweet is fine within that, best right after a meal.',
   'The kitchen closes at 00:00. After that, only water or unsweetened tea.',
   'If the meal at home doesn’t fit, adjust it or cook: more vegetables and protein, fewer carbs.',
-  'A slip is one meal, not a lost day. The next meal goes back to the rules.',
+  'A slip is one meal, not a lost day. The next meal goes back to the guidelines.',
 ]
 
 // ── Colours (F28) ──
@@ -230,11 +253,6 @@ export const DEFAULT_RECIPES: { id: string; name: string; meal: string; batch: b
   { id: 'recipe-sis', name: 'Chicken şiş with roasted vegetables and yogurt', meal: 'Main', batch: false, freezes: false },
 ]
 
-// ── Weight goal (PLAN.md 7.3, D26) ──
-
-/** About 0.4 kg a week, so at least 20 kg in a year. */
-export const WEEKLY_LOSS_GOAL = 0.4
-
 // ── Drawing (PLAN.md 7.6, D36): Friday mornings, one area a week ──
 
 /** The exercises and sources are starting suggestions, changed on the Drawing screen. */
@@ -304,7 +322,11 @@ export const DEFAULT_PROJECTS: { id: string; name: string; kind: string }[] = [
 ]
 
 /** Where a goal's progress line comes from. */
-export type GoalMeasure = 'weight' | 'fitness' | 'food-rules' | 'drawing' | 'study' | 'spanish' | 'reading'
+/**
+ * Where a goal's progress line comes from: something you log, or a track ("track:<id>", F69).
+ * Goals from before may say drawing, study or spanish: those follow the tracks they became.
+ */
+export type GoalMeasure = 'weight' | 'fitness' | 'food-rules' | 'reading' | 'drawing' | 'study' | 'spanish' | `track:${string}`
 
 export const DEFAULT_GOALS: { id: string; title: string; parentId: string | null; measure: GoalMeasure | null }[] = [
   { id: 'goal-health', title: 'Improve health', parentId: null, measure: null },

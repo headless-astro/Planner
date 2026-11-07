@@ -1,11 +1,23 @@
 <script lang="ts">
   import QrCode from '../components/QrCode.svelte'
+  import { getStart, type StartMode } from '../lib/start'
   import { formatDate } from '../lib/dates'
   import { live } from '../lib/live.svelte'
   import { currentSubscription, reminderSupport, sendTestReminder, turnOffReminders, turnOnReminders, type ReminderSupport } from '../lib/push'
   import { getReminders } from '../lib/repo'
   import { DEFAULT_REMINDERS } from '../lib/setup'
-  import { connect, disconnect, getSyncState, linkFor, syncNow, type SyncConfig, type SyncState } from '../lib/sync'
+  import {
+    connect,
+    createInvite,
+    disconnect,
+    getSyncState,
+    inviteLinkFor,
+    isServerOwner,
+    linkFor,
+    syncNow,
+    type SyncConfig,
+    type SyncState,
+  } from '../lib/sync'
 
   const sync = live(() => getSyncState, { config: null, lastSync: null, error: null } as SyncState)
   const reminders = live(() => getReminders, DEFAULT_REMINDERS)
@@ -20,7 +32,32 @@
   let clock = $state(Date.now())
 
   const config = $derived(sync.current.config)
-  const link = $derived(config ? linkFor(config, location.href) : '')
+  const start = live<StartMode | null>(() => getStart, null)
+  const link = $derived(config ? linkFor(config, location.href, start.current === 'mine' || start.current === null) : '')
+
+  // Inviting someone (F66): only the server's owner can, and each invite works once.
+  let owner = $state(false)
+  let invite = $state<{ code: string; expires: number; link: string } | null>(null)
+  let inviteCopied = $state(false)
+
+  $effect(() => {
+    const current = config
+    if (current) void isServerOwner(current).then((value) => (owner = value))
+  })
+
+  function makeInvite(current: SyncConfig) {
+    void run(async () => {
+      const made = await createInvite(current)
+      invite = { ...made, link: inviteLinkFor({ server: current.server, code: made.code }, location.href) }
+      inviteCopied = false
+    })
+  }
+
+  async function copyInvite() {
+    if (!invite) return
+    await navigator.clipboard.writeText(invite.link)
+    inviteCopied = true
+  }
 
   async function refreshReminders() {
     support = await reminderSupport()
@@ -144,6 +181,28 @@
       <button type="button" class="button secondary" onclick={() => (showLink = true)}>Show the link and QR code</button>
     {/if}
   </section>
+
+  {#if owner}
+    <section>
+      <h2>Invite someone</h2>
+      <p class="small">
+        Someone else can use the app with their own private space on your server. They don't see your data, and you don't see theirs. Each invite works
+        once, for a week.
+      </p>
+      {#if invite}
+        <div class="card padded">
+          <p class="small sync-line">They open this link or scan the code on their phone. Their code: <strong>{invite.code}</strong></p>
+          <QrCode text={invite.link} label="QR code that invites someone" />
+          <div class="actions">
+            <button type="button" class="button small secondary" onclick={copyInvite}>{inviteCopied ? 'Copied' : 'Copy link'}</button>
+            <button type="button" class="link" onclick={() => (invite = null)}>Hide</button>
+          </div>
+        </div>
+      {:else}
+        <button type="button" class="button secondary" disabled={busy} onclick={() => makeInvite(config)}>Make an invite</button>
+      {/if}
+    </section>
+  {/if}
 
   <section>
     <h2>Reminders on this device</h2>
