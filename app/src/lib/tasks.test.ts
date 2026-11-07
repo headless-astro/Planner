@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
 import { ensureSeeded } from './repo'
-import { addList, addTask, deleteList, deleteTask, getDueTasks, getListTasks, listLists, setTaskDone, updateList } from './tasks'
+import { addList, addTask, deleteList, deleteTask, getDueTasks, getListTasks, listLists, moveTaskToList, setTaskDone, updateList } from './tasks'
 
 beforeEach(async () => {
   await db.delete()
@@ -35,6 +35,18 @@ describe('task lists', () => {
     tasks = await getListTasks('list-life')
     expect(tasks.open).toEqual([])
     expect(titles(tasks.archived)).toEqual(['Trip'])
+  })
+
+  it('moves a task with its subtasks to another list, at the end', async () => {
+    await addTask('list-work', 'Already there')
+    await addTask('list-life', 'Trip')
+    const [trip] = (await getListTasks('list-life')).open
+    await addTask('list-life', 'Book tickets', { parentId: trip.id })
+    await moveTaskToList(trip.id, 'list-work')
+    expect((await getListTasks('list-life')).open).toEqual([])
+    const work = await getListTasks('list-work')
+    expect(titles(work.open)).toEqual(['Already there', 'Trip'])
+    expect(titles(work.open[1].subtasks)).toEqual(['Book tickets'])
   })
 
   it('puts tasks with a deadline first, soonest first, and keeps the order of the rest', async () => {

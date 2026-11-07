@@ -14,6 +14,7 @@
     listLists,
     setTaskDone,
     updateList,
+    moveTaskToList,
     updateTask,
     type ListTasks,
   } from '../lib/tasks'
@@ -155,6 +156,12 @@
                       if (title) void updateTask(task.id, { title })
                     }}
                   />
+                </label>
+                <label>
+                  List
+                  <select value={task.listId} aria-label="Move {task.title} to a list" onchange={(event) => moveTaskToList(task.id, event.currentTarget.value)}>
+                    {#each lists.current as list (list.id)}<option value={list.id}>{list.name}</option>{/each}
+                  </select>
                 </label>
                 <label>
                   Deadline

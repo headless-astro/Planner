@@ -51,6 +51,18 @@ export async function getListTasks(listId: string): Promise<ListTasks> {
   }
 }
 
+/** Moves a task, with its subtasks, to another list; it goes to the end of that list. */
+export async function moveTaskToList(id: string, listId: string): Promise<void> {
+  await db.transaction('rw', db.tasks, async () => {
+    const task = await db.tasks.get(id)
+    if (!task || task.listId === listId) return
+    const stamp = now()
+    await db.tasks.update(id, { listId, order: await nextOrder(db.tasks), updatedAt: stamp })
+    const subtasks = alive(await db.tasks.where('listId').equals(task.listId ?? '').toArray()).filter((sub) => sub.parentId === id)
+    for (const sub of subtasks) await db.tasks.update(sub.id, { listId, updatedAt: stamp })
+  })
+}
+
 export async function addTask(listId: string, title: string, options: { parentId?: string; due?: string | null } = {}): Promise<void> {
   await db.tasks.put({
     id: newId(),
