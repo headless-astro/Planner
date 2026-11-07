@@ -42,11 +42,12 @@
     }
   }
 
-  /** Due today or late, most late first; ones done today stay at the end so Undo is at hand. */
+  /**
+   * Every routine with a due date, soonest first: late, then today, then the days ahead (D88).
+   * One done today goes by its next date. Routines never done have no date yet.
+   */
   const dueItems = $derived(
-    statuses.current
-      .filter((status) => isDue(status) || status.doneThatDay)
-      .sort((a, b) => Number(a.doneThatDay) - Number(b.doneThatDay) || (a.dueIn ?? 0) - (b.dueIn ?? 0)),
+    statuses.current.filter((status) => status.dueIn !== null).sort((a, b) => (a.dueIn ?? 0) - (b.dueIn ?? 0) || a.routine.order - b.routine.order),
   )
   const dueCount = $derived(statuses.current.filter(isDue).length)
   const shown = $derived(tab === DUE ? dueItems : (groups.find((group) => group.area === tab)?.items ?? []))
@@ -239,7 +240,7 @@
       {/each}
     </ul>
   {:else if tab === DUE}
-    <p class="muted small">Nothing due or late right now.</p>
+    <p class="muted small">No routines with a due date yet. Mark one done (or when you last did it) and it shows here.</p>
   {:else}
     <p class="muted small">No routines in {tab}.</p>
   {/if}

@@ -337,7 +337,7 @@ describe('Routines', () => {
     await open('#/routines')
     // Never-done routines aren't due yet, so Vacuum is under its area, not under Due.
     await vi.waitFor(() => expect(buttonByText('Cleaning')).toBeTruthy())
-    expect(text()).toContain('Nothing due or late right now.')
+    expect(text()).toContain('No routines with a due date yet.')
     click(buttonByText('Cleaning'))
     await vi.waitFor(() => expect(text()).toContain('Vacuum'))
     const row = [...document.querySelectorAll('.routine-head')].find((head) => head.textContent?.includes('Vacuum'))
@@ -345,6 +345,18 @@ describe('Routines', () => {
     await vi.waitFor(() => expect(row?.textContent).toContain('Undo'))
     expect(row?.querySelector('.due-pill')?.textContent).toBe('done · next in 5 days')
     await vi.waitFor(async () => expect((await db.entries.get('2026-11-02|tick:chores'))?.value).toBe(true))
+  })
+
+  it('lists every routine with a due date under Due, soonest first (D88)', async () => {
+    await setRoutineDone('routine-dusting', '2026-10-30', true) // every 7 days: due Fri 6 Nov
+    await setRoutineDone('routine-vacuum', '2026-10-20', true) // every 5 days: late
+    await setRoutineDone('routine-windows', '2026-10-15', true) // every 30 days: in 12 days
+    await open('#/routines')
+    await vi.waitFor(() => expect(text()).toContain('Windows'))
+    const names = [...document.querySelectorAll('.routine-head .label')].map((label) => label.textContent?.trim())
+    expect(names).toEqual(['Vacuum', 'Dusting', 'Windows'])
+    // The tab's number still counts what's due or late now.
+    expect(buttonByText('Due')?.textContent).toBe('Due 1')
   })
 
   it('lists late routines under Due, and adds one behind the + button', async () => {
