@@ -6,7 +6,9 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2026-10-01",
 	// Lets the AI connector's sign-in check an app's published details (F74).
-	"compatibility_flags": ["global_fetch_strictly_public"],
+	"compatibility_flags": [
+		"global_fetch_strictly_public"
+	],
 	"d1_databases": [
 		{
 			"binding": "DB",
@@ -18,7 +20,8 @@
 	// Sign-ins for the AI connector (F74). Wrangler creates it on the first deploy.
 	"kv_namespaces": [
 		{
-			"binding": "OAUTH_KV"
+			"binding": "OAUTH_KV",
+			"id": "4f43029cd8bf495696a9a0b53ae77ffa"
 		}
 	],
 	"vars": {
