@@ -293,6 +293,18 @@ export interface DrawingLog extends Synced {
   note: string
 }
 
+/** An AI's write-up you kept (F75): saved by the connector, or pasted in. */
+export interface SavedAnalysis extends Synced {
+  /** The day it was saved. */
+  date: string
+  title: string
+  /** Markdown, as the AI wrote it. */
+  text: string
+  source: 'connector' | 'pasted'
+  /** Which AI, when the connector knows ("Claude"). */
+  by?: string
+}
+
 /** Bookkeeping for this device only: never synced or exported. */
 export interface Meta {
   id: string
@@ -326,6 +338,7 @@ export const SYNCED_TABLES = [
   'goals',
   'drawingAreas',
   'drawingLogs',
+  'analyses',
 ] as const
 export type SyncedTableName = (typeof SYNCED_TABLES)[number]
 
@@ -361,6 +374,7 @@ const INDEXES: Record<SyncedTableName, string> = {
   goals: 'id',
   drawingAreas: 'id',
   drawingLogs: 'id, date',
+  analyses: 'id, date',
 }
 
 type Row = Synced & Record<string, unknown>
@@ -391,6 +405,7 @@ export class PlannerDB extends Dexie {
   goals!: Table<Goal, string>
   drawingAreas!: Table<DrawingArea, string>
   drawingLogs!: Table<DrawingLog, string>
+  analyses!: Table<SavedAnalysis, string>
   meta!: Table<Meta, string>
 
   constructor() {
@@ -446,6 +461,13 @@ export class PlannerDB extends Dexie {
               if (row.updatedAt > 0) row[DIRTY] = 1
             })
         }
+      })
+    // F75: saved AI analyses. Devices on an older version skipped them while syncing, so
+    // everything is fetched once more; only what's newer than here is saved.
+    this.version(6)
+      .stores({ analyses: `${INDEXES.analyses}, ${DIRTY}` })
+      .upgrade(async (transaction) => {
+        await transaction.table('meta').put({ id: 'syncCursor', value: 0 })
       })
   }
 }

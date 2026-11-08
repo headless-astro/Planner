@@ -4,10 +4,11 @@
   import HabitStrip from '../components/HabitStrip.svelte'
   import MonthCalendar from '../components/MonthCalendar.svelte'
   import WeightChart from '../components/WeightChart.svelte'
-  import { formatShort, parseDate } from '../lib/dates'
+  import { formatDate, formatShort, parseDate } from '../lib/dates'
   import type { Measurement } from '../lib/db'
   import { PERIODS, getInsights, type Insights, type Period } from '../lib/insights'
   import { live } from '../lib/live.svelte'
+  import { listAnalyses } from '../lib/ai'
   import { SHELVES, type Shelf } from '../lib/media'
 
   let { today }: { today: string } = $props()
@@ -30,6 +31,9 @@
       // Not remembered, which is fine.
     }
   }
+
+  // Analyses you kept from an AI (F75), newest first.
+  const analyses = live(() => listAnalyses, [])
 
   const insights = live(() => {
     const chosen = period
@@ -251,5 +255,19 @@
     <h2>Look back</h2>
     {#if period !== 'week'}{@render reviewCard(data.review.done, data.review.notes)}{/if}
     <MonthCalendar {today} logged={data.loggedDates} periods={data.periodDates} />
+  </section>
+{/if}
+
+{#if analyses.current.length}
+  <section>
+    <h2>Saved analyses</h2>
+    <ul class="list more-list">
+      {#each analyses.current.slice(0, 3) as item (item.id)}
+        <li>
+          <a href="#/ai"><span class="label">{item.title}</span><span class="detail">{formatDate(parseDate(item.date))}{item.by ? ` · ${item.by}` : ''}</span></a>
+        </li>
+      {/each}
+    </ul>
+    <p class="small"><a href="#/ai">{analyses.current.length > 3 ? `All ${analyses.current.length} analyses` : 'AI analysis'}</a></p>
   </section>
 {/if}

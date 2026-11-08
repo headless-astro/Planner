@@ -1,7 +1,15 @@
 // Small HTTP helpers: JSON responses, errors with a status, CORS.
 
+import type { OAuthHelpers } from '@cloudflare/workers-oauth-provider'
+
 export interface Env {
   DB: D1Database
+  /** Sign-ins for the AI connector (F74). Without it the server works as before, minus the connector. */
+  OAUTH_KV?: KVNamespace
+  /** Put there by the OAuth library for the routes outside /mcp. */
+  OAUTH_PROVIDER?: OAuthHelpers
+  /** The app's address, for the link on the sign-in page. */
+  APP_URL?: string
 }
 
 export class HttpError extends Error {

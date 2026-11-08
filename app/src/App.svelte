@@ -7,7 +7,8 @@
   import { DRAWING_TRACK, SPANISH_TRACK, TECH_TRACK } from './lib/activities'
   import { prepareDevice } from './lib/start'
   import { DEFAULT_APPEARANCE } from './lib/setup'
-  import { getSyncConfig, startSync } from './lib/sync'
+  import { getSyncConfig, onSynced, startSync } from './lib/sync'
+  import { scheduleAnalysis } from './lib/ai'
   import Icon, { type IconName } from './components/Icon.svelte'
   import Day from './routes/Day.svelte'
   import Exercise from './routes/Exercise.svelte'
@@ -29,6 +30,7 @@
   import Shopping from './routes/Shopping.svelte'
   import Step from './routes/Step.svelte'
   import Sync from './routes/Sync.svelte'
+  import Ai from './routes/Ai.svelte'
   import Track from './routes/Track.svelte'
   import Tracks from './routes/Tracks.svelte'
   import Upcoming from './routes/Upcoming.svelte'
@@ -56,6 +58,7 @@
     'exercise',
     'goals',
     'sync',
+    'ai',
   ] as const
   type Screen = (typeof SCREENS)[number]
   type Route =
@@ -102,6 +105,7 @@
     setup: 'settings',
     goals: 'settings',
     sync: 'settings',
+    ai: 'settings',
     link: 'settings',
     join: 'settings',
   }
@@ -184,7 +188,9 @@
       ready = true
       // Ask the browser to keep the data even when the device runs low on space.
       void navigator.storage?.persist?.()
-      // Sync with the server, if this device is connected (M2).
+      // Sync with the server, if this device is connected (M2). With Connect an AI on, the
+      // week-by-week summary goes up after it (F74).
+      onSynced(scheduleAnalysis)
       startSync()
       void getSyncConfig().then(refreshReminders, () => undefined)
     })
@@ -283,6 +289,8 @@
     <Goals {today} />
   {:else if route.name === 'sync'}
     <Sync />
+  {:else if route.name === 'ai'}
+    <Ai />
   {:else}
     {#key today}
       <Day date={today} isToday />

@@ -5,6 +5,8 @@
 	"name": "planner-sync",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-10-01",
+	// Lets the AI connector's sign-in check an app's published details (F74).
+	"compatibility_flags": ["global_fetch_strictly_public"],
 	"d1_databases": [
 		{
 			"binding": "DB",
@@ -13,6 +15,15 @@
 			"migrations_dir": "migrations"
 		}
 	],
+	// Sign-ins for the AI connector (F74). Wrangler creates it on the first deploy.
+	"kv_namespaces": [
+		{
+			"binding": "OAUTH_KV"
+		}
+	],
+	"vars": {
+		"APP_URL": "https://headless-astro.github.io/Planner/"
+	},
 	// Every 5 minutes: is a reminder due? (PLAN.md 11.5)
 	"triggers": {
 		"crons": [

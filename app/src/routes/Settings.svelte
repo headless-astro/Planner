@@ -82,5 +82,6 @@
   <h2>App</h2>
   <ul class="list more-list">
     {@render link('#/sync', 'Sync and reminders', 'Share data between your phone and PC; notifications at your times')}
+    {@render link('#/ai', 'AI analysis', 'Export for an AI, analyses you keep, connect Claude (off unless you turn it on)')}
   </ul>
 </section>

@@ -343,6 +343,7 @@
     changed in both places, the newer change wins.
   </p>
   {#if importMessage}<p class="notice" role="status">{importMessage}</p>{/if}
+  <p class="muted small">For a summary an AI can read (trends, notes, food diary), see <a href="#/ai">AI analysis</a>.</p>
 </section>
 
 <section>

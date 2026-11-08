@@ -319,9 +319,17 @@ async function syncOnce(): Promise<void> {
     }
     await setMeta(LAST, Date.now())
     await db.meta.delete(ERROR)
+    synced?.()
   } catch (error) {
     await setMeta(ERROR, error instanceof Error ? error.message : String(error)).catch(() => undefined)
   }
+}
+
+let synced: (() => void) | null = null
+
+/** Runs after each sync that worked. The AI summary (F74) goes up after it. */
+export function onSynced(listener: (() => void) | null): void {
+  synced = listener
 }
 
 let running: Promise<void> | null = null
