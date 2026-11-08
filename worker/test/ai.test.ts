@@ -132,6 +132,14 @@ describe('the summary the app sends', () => {
 })
 
 describe('sign-in codes', () => {
+  it('say what to do when the database is missing its latest migration', async () => {
+    await setUp()
+    await env.DB.prepare('DROP TABLE ai_codes').run()
+    const { status, body } = await post('/ai/code', KEY)
+    expect(status).toBe(503)
+    expect(body.error).toContain('migrations')
+  })
+
   it('are 8 letters and digits, from the owner or anyone with a space', async () => {
     await setUp()
     const { status, body } = await post('/ai/code', KEY)

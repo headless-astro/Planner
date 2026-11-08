@@ -67,6 +67,11 @@ async function handle(request: Request, env: Env): Promise<Response> {
     return await route(request, env)
   } catch (error) {
     if (error instanceof HttpError) return json({ error: error.message }, error.status)
+    // A new server whose database hasn't had its latest migration yet.
+    if (error instanceof Error && /no such table/i.test(error.message)) {
+      console.error(error)
+      return json({ error: 'The server’s database needs an update: run the migrations (npx wrangler d1 migrations apply planner --remote).' }, 503)
+    }
     console.error(error)
     return json({ error: 'Something went wrong on the server.' }, 500)
   }

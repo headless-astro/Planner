@@ -29,10 +29,13 @@
 
   let busy = $state(false)
   let message = $state<string | null>(null)
+  /** Where the message shows: next to what was pressed, so it's on screen. */
+  let messageAt = $state<'top' | 'connect' | 'code'>('top')
 
-  async function run(action: () => Promise<unknown>, done?: string) {
+  async function run(action: () => Promise<unknown>, done?: string, where: typeof messageAt = 'top') {
     busy = true
     message = null
+    messageAt = where
     try {
       await action()
       if (done) message = done
@@ -109,11 +112,11 @@
   function toggle(on: boolean) {
     const current = config
     if (on && current) {
-      void run(() => turnAiOn(current, syncNow), 'On. Your weekly summary is on your server now; it updates after each sync.')
+      void run(() => turnAiOn(current, syncNow), 'On. Your weekly summary is on your server now; it updates after each sync.', 'connect')
     } else if (!on) {
       if (!window.confirm('Turn off Connect an AI? Your server deletes the summary, and every AI that’s connected is signed out.')) return
       code = null
-      void run(() => turnAiOff(current, syncNow), 'Off. The summary is deleted from your server, and every AI is signed out.')
+      void run(() => turnAiOff(current, syncNow), 'Off. The summary is deleted from your server, and every AI is signed out.', 'connect')
     }
   }
 
@@ -123,7 +126,7 @@
     void run(async () => {
       await syncNow()
       code = await getSignInCode(current)
-    })
+    }, undefined, 'code')
   }
 
   async function copyAddress() {
@@ -143,7 +146,7 @@
   <p class="date">Hand your trends, notes and food diary to an AI, and keep what it tells you.</p>
 </header>
 
-{#if message}<p class="notice" role="status">{message}</p>{/if}
+{#if message && messageAt === 'top'}<p class="notice" role="status">{message}</p>{/if}
 
 <section>
   <h2>Export for an AI</h2>
@@ -255,6 +258,7 @@
           <p class="small late">Your server needs an update before an AI can connect. The steps are in the plan's to-do list.</p>
         {/if}
       {/if}
+      {#if message && messageAt === 'connect'}<p class="notice" role="status">{message}</p>{/if}
     </div>
 
     {#if ai.current.connect}
@@ -283,6 +287,7 @@
           <p class="ai-code">{code.code}</p>
           <p class="small muted">Works once, for {minutesLeft(code.expires)} more minutes.</p>
         {/if}
+        {#if message && messageAt === 'code'}<p class="small late" role="alert">{message}</p>{/if}
         <div class="actions">
           <button type="button" class="button small" disabled={busy || ready === false} onclick={newCode}>{code ? 'Get a new code' : 'Get a sign-in code'}</button>
         </div>
