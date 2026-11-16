@@ -41,6 +41,8 @@ export interface Task extends Synced {
   /** Notes and a link, for list tasks such as projects (F34). */
   notes?: string
   link?: string
+  /** A to-do's part of the day on Today (F80); any time when missing. */
+  part?: 'morning' | 'anytime' | 'evening'
 }
 
 export interface Measurement extends Synced {
@@ -210,7 +212,8 @@ export interface CookedLog extends Synced {
   date: string
 }
 
-export type MediaKind = 'book' | 'game' | 'watch'
+/** `other` is anything in a section you added to More yourself (F77). */
+export type MediaKind = 'book' | 'game' | 'watch' | 'other'
 export type MediaStatus = 'want' | 'active' | 'done' | 'stopped'
 /** Enjoyed it, it was fine, or didn't enjoy it. */
 export type Thumb = 'up' | 'meh' | 'down'
@@ -219,7 +222,7 @@ export type Thumb = 'up' | 'meh' | 'down'
 export interface MediaItem extends Synced {
   kind: MediaKind
   title: string
-  /** Books only. */
+  /** Books' author, or the second field of your own section ("Artist", "Host"). */
   author: string
   /** Movies and shows only. */
   format: 'movie' | 'show' | null
@@ -236,6 +239,13 @@ export interface MediaItem extends Synced {
   notes: string
   /** The year a film came out, for films brought in from Letterboxd. */
   year?: number | null
+  /** Your own sections (F77): the id of the section an `other` item is in. */
+  section?: string
+  /**
+   * A cover picture's address on a public site (F78). Missing: not looked up yet; null: looked
+   * up and nothing found, or taken off by hand.
+   */
+  cover?: string | null
 }
 
 export interface Material {

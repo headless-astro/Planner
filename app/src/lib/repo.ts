@@ -303,11 +303,13 @@ export async function getSnacks(date: string): Promise<Snack[]> {
 
 // ── To-dos: tasks without a list ──
 
-export async function addTodo(title: string, date: string): Promise<void> {
+/** A to-do for a day, in a part of it (F80): any time unless you pick morning or evening. */
+export async function addTodo(title: string, date: string, part: 'morning' | 'anytime' | 'evening' = 'anytime'): Promise<void> {
   await db.tasks.put({
     id: newId(),
     title,
     date,
+    ...(part === 'anytime' ? {} : { part }),
     due: null,
     listId: null,
     parentId: null,
@@ -320,6 +322,7 @@ export async function addTodo(title: string, date: string): Promise<void> {
 
 export const setTodoDone = (id: string, done: boolean, date: string) => update(db.tasks, id, { done, doneDate: done ? date : null })
 export const moveTodo = (id: string, date: string) => update(db.tasks, id, { date })
+export const setTodoPart = (id: string, part: 'morning' | 'anytime' | 'evening') => update(db.tasks, id, { part })
 export const deleteTodo = (id: string) => softDelete(db.tasks, id)
 
 /**

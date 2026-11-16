@@ -36,6 +36,8 @@ export interface FilmList {
   watchlist: { title: string; year: number | null }[]
   /** Films hearted on Letterboxd: they get the heart here too. */
   liked?: { title: string; year: number | null }[]
+  /** Films being watched now (Movie Paradise has these; Letterboxd doesn't). */
+  watching?: { title: string; year: number | null }[]
 }
 
 export interface MergeResult {
@@ -128,6 +130,39 @@ export async function mergeFilms(list: FilmList): Promise<MergeResult> {
       started: null,
       finished: null,
       rating: null,
+      notes: '',
+      year: film.year,
+      updatedAt: now(),
+    }
+    await db.media.put(item)
+    items.push(item)
+    result.added++
+  }
+
+  // Films being watched now go to Watching. One already here only moves on from Want to watch:
+  // finished, stopped or already watching stays as it is.
+  for (const film of list.watching ?? []) {
+    const existing = find(film.title, film.year)
+    if (existing) {
+      if (existing.status === 'want') {
+        await update(db.media, existing.id, { status: 'active' })
+        existing.status = 'active'
+        result.updated++
+      }
+      continue
+    }
+    const item: MediaItem = {
+      id: filmId(film.title, film.year),
+      kind: 'watch',
+      title: film.title,
+      author: '',
+      format: 'movie',
+      genre: '',
+      status: 'active',
+      started: null,
+      finished: null,
+      rating: null,
+      favorite: liked.has(filmKey(film.title, film.year)),
       notes: '',
       year: film.year,
       updatedAt: now(),

@@ -3,7 +3,7 @@
 import { countCrunchDays, isCrunchDay, listCrunches } from './crunch'
 import { addDays, daysBetween, formatShort, parseDate, toISODate, weekStart, weekdayIndex } from './dates'
 import { db, type Crunch, type Dose, type DrawingLog, type Entry, type Habit, type Measurement, type MediaItem, type RoutineLog, type SpanishLog, type Task, type Topic, type Track, type TrackSession } from './db'
-import { SHELVES, shelfOf, thumbOf, type Shelf } from './media'
+import { BUILT_IN_SHELVES, listSections, sectionShelf, shelfOf, thumbOf, type CustomSection, type Shelf } from './media'
 import { getFeatures, getTargets, getTracking, getWeek, listDoses, listHabits } from './repo'
 import { getRoutineStatuses, type RoutineStatus } from './routines'
 import type { DayTemplate, Targets } from './setup'
@@ -119,6 +119,8 @@ export interface InsightsData {
   doses: Dose[]
   week: DayTemplate[]
   media: MediaItem[]
+  /** Your own sections in More (F77), so what's finished in them counts too. */
+  sections?: CustomSection[]
   tracks: Track[]
   topics: Topic[]
   /** Kept for the days they were logged on, from before Spanish and drawing were tracks. */
@@ -167,7 +169,8 @@ export interface Insights {
   tracks: { id: string; name: string; sessions: number; stepsDone: number; stepsTotal: number; stepsInPeriod: number; hours: number | null; hoursInPeriod: number; milestone: string | null }[]
   routines: { done: number; tracked: number; onTime: number }
   tasks: { done: number; perWeek: number; late: number }
-  freeTime: { finished: Record<Shelf, number>; movieStars: number | null; liked: number; rated: number }
+  /** What was finished, per tab in More that has any. */
+  freeTime: { finished: { key: Shelf; title: string; one: string; count: number }[]; movieStars: number | null; liked: number; rated: number }
   overall: { since: string | null; logged: number; days: number }
   /** This week's review: marked done, or notes written. */
   review: { done: boolean; notes: boolean }
@@ -202,7 +205,8 @@ export function buildInsights(data: InsightsData, today: string, period: Period)
   // The days with anything saved (D6). Review notes don't count as logging a day.
   const loggedSet = new Set(
     [
-      ...live.filter((entry) => !entry.key.startsWith('review')).map((entry) => entry.date),
+      // What's added to a day (F79) isn't something logged until it's ticked.
+      ...live.filter((entry) => !entry.key.startsWith('review') && entry.key !== 'extras').map((entry) => entry.date),
       ...data.measurements.map((row) => row.date),
       ...data.routineLogs.map((row) => row.date),
       ...data.trackSessions.map((row) => row.date),
@@ -265,8 +269,10 @@ export function buildInsights(data: InsightsData, today: string, period: Period)
     }
   }
   const finishedMedia = data.media.filter((item) => item.status === 'done' && inRange(item.finished))
-  const byShelf = Object.fromEntries((Object.keys(SHELVES) as Shelf[]).map((shelf) => [shelf, finishedMedia.filter((item) => shelfOf(item) === shelf).length])) as Record<Shelf, number>
-  const finishedParts = (Object.keys(SHELVES) as Shelf[]).filter((shelf) => byShelf[shelf]).map((shelf) => plural(byShelf[shelf], SHELVES[shelf].one))
+  const byShelf = [...BUILT_IN_SHELVES, ...(data.sections ?? []).map(sectionShelf)]
+    .map((info) => ({ key: info.key, title: info.title, one: info.one, count: finishedMedia.filter((item) => shelfOf(item) === info.key).length }))
+    .filter((shelf) => shelf.count)
+  const finishedParts = byShelf.map((shelf) => plural(shelf.count, shelf.one))
   if (finishedParts.length) wins.push(`Finished ${listing(finishedParts)}`)
   const routinesDone = data.routineLogs.filter((log) => inRange(log.date)).length
   if (routinesDone) wins.push(`${plural(routinesDone, 'routine')} done`)
@@ -322,8 +328,9 @@ export function buildInsights(data: InsightsData, today: string, period: Period)
   const ratings = workRatings(work.map((entry) => entry.value))
 
   // ── Free time ──
-  const movies = finishedMedia.filter((item) => SHELVES[shelfOf(item)].stars && item.rating != null)
-  const thumbs = finishedMedia.filter((item) => !SHELVES[shelfOf(item)].stars && thumbOf(item))
+  const isMovie = (item: MediaItem) => item.kind === 'watch' && item.format !== 'show'
+  const movies = finishedMedia.filter((item) => isMovie(item) && item.rating != null)
+  const thumbs = finishedMedia.filter((item) => !isMovie(item) && thumbOf(item))
 
   // ── Routines and tasks ──
   const tracked = data.routines.filter((status) => status.averageGap !== null)
@@ -398,7 +405,7 @@ export function buildInsights(data: InsightsData, today: string, period: Period)
 }
 
 export async function getInsights(today: string, period: Period): Promise<Insights> {
-  const [entries, habits, targets, crunches, routines, routineLogs, tasks, measurements, doses, week, media, topics, spanishLogs, drawingLogs, trackSessions, snacks, cooked, crafts, tracking, tracks] =
+  const [entries, habits, targets, crunches, routines, routineLogs, tasks, measurements, doses, week, media, topics, spanishLogs, drawingLogs, trackSessions, snacks, cooked, crafts, tracking, tracks, sections] =
     await Promise.all([
       db.entries.toArray(),
       listHabits(),
@@ -420,6 +427,7 @@ export async function getInsights(today: string, period: Period): Promise<Insigh
       db.craftLogs.toArray(),
       getTracking(),
       listTracks(),
+      listSections(),
     ])
   const features = await getFeatures()
   return buildInsights(
@@ -435,6 +443,7 @@ export async function getInsights(today: string, period: Period): Promise<Insigh
       doses,
       week,
       media: alive(media),
+      sections,
       tracks,
       topics: alive(topics),
       spanishLogs: alive(spanishLogs),

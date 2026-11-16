@@ -125,3 +125,31 @@ describe('weekDates', () => {
     expect(days[6]).toBe('08/11/2026')
   })
 })
+
+describe('added to one day only (F79)', () => {
+  it('a workout on the rest day ticks the workout, in the part you picked', () => {
+    const plan = buildDay(at(2026, 11, 8), { ...setup, extras: [{ id: 'w', part: 'evening', counts: 'workout', note: 'swimming' }] })
+    expect(find(plan.evening, 'workout')).toMatchObject({ label: 'Workout · swimming', tickKey: 'workout', extraId: 'w' })
+    expect(find(plan.evening, 'workout')?.detail).toContain('counts for Fitness')
+    expect(find(plan.morning, 'workout')).toBeUndefined()
+  })
+
+  it("isn't a second workout on a day that has one", () => {
+    const plan = buildDay(at(2026, 11, 2), { ...setup, extras: [{ id: 'w', part: 'evening', counts: 'workout' }] })
+    expect(plan.evening.filter((item) => item.id === 'workout')).toEqual([])
+    expect(find(plan.morning, 'workout')?.extraId).toBeUndefined()
+  })
+
+  it('a track session and your own activity count like the planned ones', () => {
+    const plan = buildDay(at(2026, 11, 8), {
+      ...setup,
+      extras: [
+        { id: 'd', part: 'morning', counts: 'track', trackId: DRAWING_TRACK, log: 'done' },
+        { id: 'g', part: 'anytime', counts: 'own', text: 'Guitar', note: 'new song', log: 'done' },
+      ],
+    })
+    expect(find(plan.morning, 'act:x-d')).toMatchObject({ trackId: DRAWING_TRACK, extraId: 'd' })
+    expect(find(plan.anytime, 'act:x-g')).toMatchObject({ label: 'Guitar · new song', tickKey: 'act:guitar', extraId: 'g' })
+    expect(find(plan.anytime, 'act:x-g')?.detail).toBe('added for this day')
+  })
+})

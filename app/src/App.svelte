@@ -20,7 +20,7 @@
   import Lists from './routes/Lists.svelte'
   import Me from './routes/Me.svelte'
   import Media, { type MediaView } from './routes/Media.svelte'
-  import type { Shelf } from './lib/media'
+  import { BUILT_IN_SHELVES, listSections, sectionShelf, visibleShelves, type CustomSection, type Shelf } from './lib/media'
   import Plans from './routes/Plans.svelte'
   import Recipes from './routes/Recipes.svelte'
   import Review from './routes/Review.svelte'
@@ -65,6 +65,7 @@
     | { name: Screen; view?: MediaView; adding?: boolean }
     | { name: 'day'; date: string }
     | { name: 'track'; id: string }
+    | { name: 'shelf'; id: string; view: MediaView }
     | { name: 'step'; id: string; number?: number }
     | { name: 'review-week'; monday: string }
     | { name: 'link'; payload: string }
@@ -99,6 +100,7 @@
     games: 'more',
     movies: 'more',
     shows: 'more',
+    shelf: 'more',
     exercise: 'me',
     recipes: 'more',
     shopping: 'me',
@@ -113,14 +115,18 @@
   /** The four media screens share one component. */
   const isShelf = (name: string): name is Shelf => name === 'books' || name === 'games' || name === 'movies' || name === 'shows'
 
+  const mediaView = (value: string | undefined): MediaView => (value === 'want' || value === 'done' || value === 'favorites' ? value : 'log')
+
   const isDate = (value: string | undefined): value is string => !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)
 
   // Links look like #/today, so GitHub Pages never has to serve anything but index.html.
   function readRoute(): Route {
-    const [name, argument] = location.hash.replace(/^#\/?/, '').split('/')
+    const [name, argument, third] = location.hash.replace(/^#\/?/, '').split('/')
     if (name === 'day' && isDate(argument)) return { name: 'day', date: argument }
     // Tech study, Spanish and drawing became tracks (D83); their old links still open them.
     if (name === 'track' && argument) return { name: 'track', id: argument }
+    // Your own sections in More (F77): #/shelf/<id>/want.
+    if (name === 'shelf' && argument) return { name: 'shelf', id: argument, view: mediaView(third) }
     if (name === 'step' && argument) return { name: 'step', id: argument }
     if (name === 'study' && argument && /^\d+$/.test(argument)) return { name: 'step', id: '', number: Number(argument) }
     if (name === 'study') return { name: 'track', id: TECH_TRACK }
@@ -139,7 +145,7 @@
     const screen = SCREENS.find((candidate) => candidate === name)
     // "#/tracks/new" opens a page with its add form ready (F48).
     if (screen && argument === 'new' && !isShelf(screen)) return { name: screen, adding: true }
-    if (screen && isShelf(screen)) return { name: screen, view: argument === 'want' || argument === 'done' || argument === 'favorites' ? argument : 'log' }
+    if (screen && isShelf(screen)) return { name: screen, view: mediaView(argument) }
     return { name: screen ?? 'today' }
   }
 
@@ -149,9 +155,13 @@
   let failure = $state<string | null>(null)
 
   const thisMonday = $derived(toISODate(weekStart(parseDate(today))))
-  // More opens on Books, or the first part of More that's turned on (F63).
+  // More opens on Books, or the first part of More that's turned on (F63), your own sections too (F77).
   const features = live(() => getFeatures, ALL_FEATURES)
-  const moreHref = $derived(`#/${(['books', 'games', 'movies', 'shows', 'recipes'] as const).find((key) => features.current[key]) ?? 'books'}`)
+  const sections = live(() => listSections, [] as CustomSection[])
+  const moreHref = $derived(
+    visibleShelves([...BUILT_IN_SHELVES, ...sections.current.map(sectionShelf)], sections.current, features.current)[0]?.href ??
+      (features.current.recipes ? '#/recipes' : '#/books'),
+  )
   const activeTab = $derived<Tab>(TAB_OF[route.name] ?? (tabs.some((tab) => tab.name === route.name) ? (route.name as Tab) : 'today'))
 
   // Colours (F28). The palette is also kept on the device, so index.html can apply it before
@@ -284,6 +294,10 @@
     {@const view = 'view' in route ? (route.view ?? 'log') : 'log'}
     {#key `${shelf}|${view}`}
       <Media {shelf} {today} {view} />
+    {/key}
+  {:else if route.name === 'shelf'}
+    {#key `${route.id}|${route.view}`}
+      <Media shelf={route.id} {today} view={route.view} />
     {/key}
   {:else if route.name === 'goals'}
     <Goals {today} />

@@ -9,7 +9,6 @@
   import { PERIODS, getInsights, type Insights, type Period } from '../lib/insights'
   import { live } from '../lib/live.svelte'
   import { listAnalyses } from '../lib/ai'
-  import { SHELVES, type Shelf } from '../lib/media'
 
   let { today }: { today: string } = $props()
 
@@ -233,11 +232,8 @@
       {@render tile('Tasks', `${data.tasks.done} done`, `${data.tasks.perWeek} a week${data.tasks.late ? ` · ${data.tasks.late} late now` : ''}`)}
       {@render tile(
         'Finished',
-        String((Object.values(data.freeTime.finished) as number[]).reduce((sum, n) => sum + n, 0)),
-        (Object.keys(SHELVES) as Shelf[])
-          .filter((shelf) => data.freeTime.finished[shelf])
-          .map((shelf) => `${data.freeTime.finished[shelf]} ${SHELVES[shelf].title.toLowerCase()}`)
-          .join(' · ') || `nothing ${span}`,
+        String(data.freeTime.finished.reduce((sum, shelf) => sum + shelf.count, 0)),
+        data.freeTime.finished.map((shelf) => `${shelf.count} ${shelf.title.toLowerCase()}`).join(' · ') || `nothing ${span}`,
       )}
       {#if data.freeTime.movieStars !== null || data.freeTime.rated}
         {@render tile(

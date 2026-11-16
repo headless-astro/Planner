@@ -18,6 +18,8 @@ export interface Features {
   recipes: boolean
   shopping: boolean
   goals: boolean
+  /** Cover pictures for books, films, shows and games, looked up on public sites (F78). */
+  covers: boolean
 }
 
 export type Feature = keyof Features
@@ -36,6 +38,7 @@ export const ALL_FEATURES: Features = {
   recipes: true,
   shopping: true,
   goals: true,
+  covers: true,
 }
 
 /** A new person starts without the plans made for one person; they can turn any of them on. */
@@ -71,6 +74,11 @@ export const FEATURE_GROUPS: { title: string; items: { key: Feature; label: stri
       { key: 'recipes', label: 'Recipes', detail: '' },
       { key: 'shopping', label: 'Shopping', detail: '' },
       { key: 'goals', label: 'Goals', detail: '' },
+      {
+        key: 'covers',
+        label: 'Covers',
+        detail: 'A cover next to each book, film, show and game. Its title (and author) is looked up on Open Library, TVmaze or Wikipedia; the picture loads from there, not your server',
+      },
     ],
   },
 ]

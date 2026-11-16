@@ -1,6 +1,29 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
-import { addMedia, finishMedia, finishedIn, groupMedia, listMedia, listShelf, setThumb, sortMedia, startMedia, thumbOf } from './media'
+import { ALL_FEATURES } from './features'
+import {
+  SHELVES,
+  addMedia,
+  addSection,
+  deleteSection,
+  finishMedia,
+  finishedIn,
+  getShelves,
+  groupMedia,
+  isRated,
+  listMedia,
+  listSections,
+  listShelf,
+  sectionShelf,
+  setCover,
+  setThumb,
+  singular,
+  sortMedia,
+  startMedia,
+  thumbOf,
+  updateSection,
+  visibleShelves,
+} from './media'
 import { ensureSeeded, getDayValues } from './repo'
 
 beforeEach(async () => {
@@ -68,5 +91,81 @@ describe('books, games and shows', () => {
     const games = await listMedia('game')
     expect(sortMedia(games, 'date').map((game) => game.title)).toEqual(['Celeste', 'Inside', 'Hades'])
     expect(sortMedia(games, 'rating').map((game) => game.title)).toEqual(['Hades', 'Celeste', 'Inside'])
+  })
+})
+
+describe('your own sections (F77)', () => {
+  it('adds a section with its own words, which More lists after the built-in tabs', async () => {
+    const id = await addSection({ title: 'Podcasts', log: 'Listening', want: 'Want to listen', by: 'Host' })
+    const [section] = await listSections()
+    expect(section).toMatchObject({ id, title: 'Podcasts', one: 'podcast', log: 'Listening', want: 'Want to listen', done: '', by: 'Host', stars: false })
+    expect(sectionShelf(section)).toMatchObject({ key: id, href: `#/shelf/${id}`, kind: 'other', active: 'Listening', done: 'Finished', by: 'Host', tick: null, custom: true })
+    expect((await getShelves()).map((info) => info.title)).toEqual(['Books', 'Games', 'Movies', 'Shows', 'Podcasts'])
+  })
+
+  it('keeps what is in a section on its own tab, with the second field; finishing ticks nothing', async () => {
+    const podcasts = await addSection({ title: 'Podcasts', by: 'Host' })
+    const albums = await addSection({ title: 'Albums', stars: true })
+    await addMedia('other', 'Serial', 'done', '2026-11-02', { section: podcasts, author: 'Sarah Koenig', thumb: 'up' })
+    await addMedia('other', 'Blue', 'done', '2026-11-02', { section: albums, rating: 5 })
+    await addMedia('book', 'Dune', 'active', '2026-11-02')
+    expect((await listShelf(podcasts)).map((item) => [item.title, item.author, item.thumb])).toEqual([['Serial', 'Sarah Koenig', 'up']])
+    const [blue] = await listShelf(albums)
+    expect(blue).toMatchObject({ rating: 5, thumb: null })
+    expect(isRated(blue)).toBe(true)
+    expect(thumbOf(blue)).toBeNull()
+    expect((await listShelf('books')).map((item) => item.title)).toEqual(['Dune'])
+    expect(await db.entries.count()).toBe(0)
+  })
+
+  it('hidden sections and parts turned off stay out of More', async () => {
+    const podcasts = await addSection({ title: 'Podcasts' })
+    await addSection({ title: 'Albums' })
+    await updateSection(podcasts, { off: true })
+    const features = { ...ALL_FEATURES, games: false }
+    const shown = visibleShelves(await getShelves(), await listSections(), features).map((info) => info.title)
+    expect(shown).toEqual(['Books', 'Movies', 'Shows', 'Albums'])
+  })
+
+  it('renames a section, and deleting it deletes what is in it', async () => {
+    const id = await addSection({ title: 'Podcasts' })
+    await addMedia('other', 'Serial', 'want', '2026-11-02', { section: id })
+    await updateSection(id, { title: 'Shows to hear', one: 'audio show' })
+    expect(sectionShelf((await listSections())[0])).toMatchObject({ title: 'Shows to hear', one: 'audio show' })
+    await deleteSection(id)
+    expect(await listSections()).toEqual([])
+    expect(await listShelf(id)).toEqual([])
+    // Kept as deleted, so the deletion syncs.
+    expect((await db.settings.get('sections'))?.value).toMatchObject({ list: [{ id, deleted: true }] })
+  })
+
+  it('guesses what one of them is called', () => {
+    expect(['Podcasts', 'Board games', 'Courses', 'Comics', 'Series', 'Diaries', 'Plays', 'Anime'].map(singular)).toEqual([
+      'podcast',
+      'board game',
+      'course',
+      'comic',
+      'series',
+      'diary',
+      'play',
+      'anime',
+    ])
+  })
+
+  it('built-in tabs keep their words', () => {
+    expect(SHELVES.books).toMatchObject({ by: 'Author', cover: 'book', href: '#/books' })
+    expect(SHELVES.movies).toMatchObject({ stars: true, cover: 'movie' })
+  })
+})
+
+describe('covers (F78)', () => {
+  it('a new title has no cover looked up yet; a cover can be set and taken off', async () => {
+    await addMedia('book', 'Dune', 'want', '2026-11-02')
+    const [book] = await listMedia('book')
+    expect(book.cover).toBeUndefined()
+    await setCover(book.id, 'https://covers.openlibrary.org/b/id/1-M.jpg')
+    expect((await listMedia('book'))[0].cover).toBe('https://covers.openlibrary.org/b/id/1-M.jpg')
+    await setCover(book.id, null)
+    expect((await listMedia('book'))[0].cover).toBeNull()
   })
 })

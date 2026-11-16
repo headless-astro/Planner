@@ -2,8 +2,8 @@ import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.svelte'
 import { db } from './lib/db'
-import { addMedia, listMedia } from './lib/media'
-import { ensureSeeded, getExercise, getWeek, listDoses, listHabits, setEntry, setMeasurement } from './lib/repo'
+import { addMedia, addSection, listMedia, listSections } from './lib/media'
+import { ensureSeeded, getExercise, getWeek, listDoses, listHabits, setEntry, setMeasurement, updateFeatures } from './lib/repo'
 import { listRecipes, updateRecipe } from './lib/recipes'
 import { getSyncState, linkFor } from './lib/sync'
 import { setRoutineDone } from './lib/routines'
@@ -577,7 +577,7 @@ describe('Books, games and shows', () => {
     expect((await db.entries.get('2026-09-12|tick:movie'))?.value).toBe(true)
   })
 
-  it('keeps finished ones on their own sub-tab, with Letterboxd folded away on Movies', async () => {
+  it('keeps finished ones on their own sub-tab, with syncing folded away at the top of Movies', async () => {
     await addMedia('book', 'Dune', 'done', '2026-10-01')
     await addMedia('book', 'Piranesi', 'active', '2026-11-01')
     await open('#/books')
@@ -587,12 +587,21 @@ describe('Books, games and shows', () => {
     await vi.waitFor(() => expect(text()).toContain('Dune'))
     expect(text()).not.toContain('Piranesi')
     expect([...document.querySelectorAll('.media-subtabs a')].map((tab) => tab.textContent?.trim())).toEqual(['Reading', 'Want to read', 'Finished', ''])
-    go('#/movies/done')
-    await vi.waitFor(() => expect(document.querySelector('details.letterboxd')).toBeTruthy())
-    expect(document.querySelector('details.letterboxd')?.hasAttribute('open')).toBe(false)
+    expect(document.querySelector('.sync-bar')).toBeNull()
     go('#/movies')
     await vi.waitFor(() => expect(document.querySelector('.subtabs a[aria-current="page"]')?.textContent).toBe('Watching'))
-    expect(document.querySelector('details.letterboxd')).toBeNull()
+    // Syncing sits above the list on every sub-tab (F81), folded away until you open it.
+    const settings = () => buttonByText('Sync with Letterboxd or Movie Paradise')
+    expect(settings()).toBeTruthy()
+    expect(document.querySelector('.sync-bar')?.compareDocumentPosition(document.querySelector('.media-subtabs') as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(document.querySelector('.sync-settings')).toBeNull()
+    click(settings())
+    expect([...document.querySelectorAll('.sync-settings h2')].map((title) => title.textContent)).toEqual(['Letterboxd', 'Movie Paradise'])
+    expect(document.querySelector('input[aria-label="Movie Paradise token"]')).toBeTruthy()
+    go('#/shows/done')
+    await vi.waitFor(() => expect(heading()).toBe('Shows'))
+    click(buttonByText('Sync with Letterboxd or Movie Paradise'))
+    expect([...document.querySelectorAll('.sync-settings h2')].map((title) => title.textContent)).toEqual(['Movie Paradise'])
   })
 
   it('keeps the want-to list on its own sub-tab', async () => {
@@ -605,6 +614,145 @@ describe('Books, games and shows', () => {
     go('#/games')
     await vi.waitFor(() => expect(document.querySelector('.subtabs a[aria-current="page"]')?.textContent).toBe('Playing'))
     expect(text()).not.toContain('Hollow Knight')
+  })
+})
+
+describe('Adding to a day (F79, F80)', () => {
+  it('a workout on the rest day goes in the part you pick, and ticking it counts for Fitness', async () => {
+    await open('#/day/2026-11-08')
+    await vi.waitFor(() => expect(heading()).toBe('Sunday'))
+    await vi.waitFor(() => expect(document.querySelector('.counts-as select option[value="workout"]')).toBeTruthy())
+    expect(checkboxFor('Workout')).toBeUndefined()
+    const select = document.querySelector('.counts-as select') as HTMLSelectElement
+    select.value = 'workout'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    click([...document.querySelectorAll('.add-day-options button')].find((button) => button.textContent === 'Evening'))
+    type(document.querySelector('input[aria-label="A note on it"]'), 'swimming')
+    submit(document.querySelector('input[aria-label="A note on it"]'))
+    await vi.waitFor(() => expect(checkboxFor('Workout · swimming')).toBeTruthy())
+    expect(document.querySelector('.part-tab.evening')?.getAttribute('aria-selected')).toBe('true')
+    // Once it's there, it isn't offered again.
+    expect(document.querySelector('.counts-as select option[value="workout"]')).toBeNull()
+    click(checkboxFor('Workout · swimming'))
+    await vi.waitFor(async () => expect((await db.entries.get('2026-11-08|tick:workout'))?.value).toBe(true))
+    await vi.waitFor(() => expect([...document.querySelectorAll('.week li')].find((row) => row.textContent?.startsWith('Fitness'))?.textContent).toContain('1/'))
+  })
+
+  it('an extra can be taken off the day while it is not ticked', async () => {
+    await setEntry('2026-11-08', 'extras', [{ id: 'w', part: 'anytime', counts: 'workout' }])
+    await open('#/day/2026-11-08')
+    await showPart('Any time')
+    await vi.waitFor(() => expect(buttonByText('Take off this day')).toBeTruthy())
+    click(buttonByText('Take off this day'))
+    await vi.waitFor(() => expect(checkboxFor('Workout')).toBeUndefined())
+  })
+
+  it('adds a to-do any time by default, or to the morning or evening', async () => {
+    await open('#/today')
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="New to-do"]')).toBeTruthy())
+    expect(document.querySelector('.add-day-options button[aria-pressed="true"]')?.textContent).toBe('Any time')
+    click([...document.querySelectorAll('.add-day-options button')].find((button) => button.textContent === 'Morning'))
+    type(document.querySelector('input[aria-label="New to-do"]'), 'Call the bank')
+    submit(document.querySelector('input[aria-label="New to-do"]'))
+    await vi.waitFor(() => expect(checkboxFor('Call the bank')).toBeTruthy())
+    expect(document.querySelector('.part-tab.morning')?.getAttribute('aria-selected')).toBe('true')
+    expect((await db.tasks.toArray()).find((task) => task.title === 'Call the bank')?.part).toBe('morning')
+    expect(document.querySelector('.add-day-options button[aria-pressed="true"]')?.textContent).toBe('Any time')
+    await showPart('Any time')
+    expect(checkboxFor('Call the bank')).toBeUndefined()
+  })
+})
+
+describe('Your own sections in More (F77)', () => {
+  it('adds a section in Settings, which gets the same tabs as Books', async () => {
+    await open('#/settings')
+    click(buttonByText('+ Add a section'))
+    const name = document.querySelector('.section-form input[placeholder="Podcasts"]')
+    type(name, 'Podcasts')
+    type(document.querySelector('.section-form input[placeholder="Artist, Host, Author…"]'), 'Host')
+    submit(name)
+    await vi.waitFor(async () => expect(await listSections()).toHaveLength(1))
+    const [section] = await listSections()
+    expect(section).toMatchObject({ title: 'Podcasts', one: 'podcast', by: 'Host', stars: false })
+    await vi.waitFor(() => expect(document.querySelector(`a[href="#/shelf/${section.id}"]`)?.textContent).toBe('Open Podcasts'))
+
+    go(`#/shelf/${section.id}`)
+    await vi.waitFor(() => expect(heading()).toBe('Podcasts'))
+    await vi.waitFor(() => expect([...document.querySelectorAll('.list-tabs .chip')].map((chip) => chip.textContent)).toContain('Podcasts'))
+    expect([...document.querySelectorAll('.list-tabs .chip')].map((chip) => chip.textContent)).toEqual(['Books', 'Games', 'Movies', 'Shows', 'Podcasts', 'Recipes'])
+    expect([...document.querySelectorAll('.media-subtabs a')].map((tab) => tab.textContent?.trim())).toEqual(['Current', 'Want to try', 'Finished', ''])
+    click(document.querySelector('button[aria-label="Add a podcast"]'))
+    type(document.querySelector('input[aria-label="New podcast"]'), 'Serial')
+    type(document.querySelector('input[aria-label="Host"]'), 'Sarah Koenig')
+    submit(document.querySelector('input[aria-label="New podcast"]'))
+    await vi.waitFor(() => expect(text()).toContain('Sarah Koenig'))
+    expect((await listMedia('other'))[0]).toMatchObject({ title: 'Serial', section: section.id, author: 'Sarah Koenig', status: 'active' })
+    // Switching sub-tab stays in the section.
+    go(`#/shelf/${section.id}/want`)
+    await vi.waitFor(() => expect(document.querySelector('.subtabs a[aria-current="page"]')?.textContent).toBe('Want to try'))
+  })
+
+  it('More opens on your section when it is the only one on; unticking hides it', async () => {
+    const id = await addSection({ title: 'Albums', stars: true })
+    await updateFeatures({ books: false, games: false, movies: false, shows: false })
+    await open('#/settings')
+    await vi.waitFor(() => expect(document.querySelector('.tabs a[href="#/shelf/' + id + '"]')?.textContent?.trim()).toBe('More'))
+    const box = () => [...document.querySelectorAll('.sections-card label')].find((row) => row.textContent?.includes('Albums'))?.querySelector('input')
+    await vi.waitFor(() => expect(box()).toBeTruthy())
+    click(box())
+    await vi.waitFor(async () => expect((await listSections())[0].off).toBe(true))
+    await vi.waitFor(() => expect(document.querySelector('.tabs a[href="#/recipes"]')?.textContent?.trim()).toBe('More'))
+  })
+
+  it('an address for a section that was deleted says so', async () => {
+    await open('#/shelf/gone')
+    await vi.waitFor(() => expect(text()).toContain('This section isn’t here any more.'))
+  })
+})
+
+describe('Covers (F78)', () => {
+  /** The rows count as on screen straight away. */
+  class SeenAtOnce {
+    callback: IntersectionObserverCallback
+    constructor(callback: IntersectionObserverCallback) {
+      this.callback = callback
+    }
+    observe() {
+      this.callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+    }
+    disconnect() {}
+    unobserve() {}
+    takeRecords() {
+      return []
+    }
+  }
+
+  it('looks up a cover once a book is on screen, and lets you choose another', async () => {
+    vi.stubGlobal('IntersectionObserver', SeenAtOnce)
+    const lookup = vi.fn(async (_url: string) => new Response(JSON.stringify({ docs: [{ title: 'Dune', cover_i: 1 }, { title: 'Dune', cover_i: 2 }] })))
+    vi.stubGlobal('fetch', lookup)
+    await addMedia('book', 'Dune', 'active', '2026-11-02', { author: 'Frank Herbert' })
+    await open('#/books')
+    await vi.waitFor(() => expect(document.querySelector('.cover img')?.getAttribute('src')).toBe('https://covers.openlibrary.org/b/id/1-M.jpg'))
+    expect(String(lookup.mock.calls[0]?.[0])).toContain('openlibrary.org/search.json')
+    click(buttonByText('Choose a cover'))
+    await vi.waitFor(() => expect(document.querySelectorAll('.cover-choices button')).toHaveLength(2))
+    click(document.querySelectorAll('.cover-choices button')[1])
+    await vi.waitFor(async () => expect((await listMedia('book'))[0].cover).toBe('https://covers.openlibrary.org/b/id/2-M.jpg'))
+  })
+
+  it('with Covers off, nothing is looked up or shown', async () => {
+    vi.stubGlobal('IntersectionObserver', SeenAtOnce)
+    const lookup = vi.fn()
+    vi.stubGlobal('fetch', lookup)
+    await updateFeatures({ covers: false })
+    await addMedia('book', 'Dune', 'active', '2026-11-02')
+    await open('#/books')
+    await vi.waitFor(() => expect(text()).toContain('Dune'))
+    expect(document.querySelector('.cover')).toBeNull()
+    expect(text()).not.toContain('Choose a cover')
+    expect(lookup).not.toHaveBeenCalled()
   })
 })
 

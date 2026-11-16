@@ -2,6 +2,7 @@
 import { customKey, dayActivities, isReviewDay } from './activities'
 import { WEEKDAYS, addDays, formatDate, weekStart, weekdayIndex, toISODate } from './dates'
 import type { Topic, Track, TrackSession } from './db'
+import type { DayExtra } from './extras'
 import { BLOCK_WEEKS, DEFAULT_EXERCISE, blockNow, type ExercisePlan } from './exercise'
 import { ALL_FEATURES, dayWithFeatures, type Features } from './features'
 import { DEFAULT_DOSES, WEEK_TEMPLATE, type Activity, type DayTemplate, type TimeOfDay } from './setup'
@@ -31,6 +32,8 @@ export interface DaySetup {
   exercise?: ExercisePlan
   /** What's turned on (F63); everything by default. */
   features?: Features
+  /** What was added to this day only (F79). */
+  extras?: readonly DayExtra[]
 }
 
 export interface PlanItem {
@@ -52,6 +55,8 @@ export interface PlanItem {
   trackId?: string
   /** For an activity in your own words: what its tick is kept under. */
   tickKey?: string
+  /** Added to this day only (F79): the extra's id, so it can be taken off again. */
+  extraId?: string
 }
 
 export interface DayPlan {
@@ -145,6 +150,28 @@ export function buildDay(date: Date, setup: DaySetup = {}): DayPlan {
   }
   const session = workout(template, date, setup.exercise ?? DEFAULT_EXERCISE)
   if (session) parts.morning.push(session)
+
+  // Added to this day only (F79). Each ticks what its planned version would.
+  const ALSO = 'added for this day'
+  for (const extra of setup.extras ?? []) {
+    const part = parts[extra.part] ? extra.part : 'anytime'
+    if (extra.counts === 'workout') {
+      // A planned workout already holds the day's workout tick.
+      if (!features.exercise || session || [...parts.morning, ...parts.anytime, ...parts.evening].some((item) => item.id === 'workout')) continue
+      const note = extra.note?.trim()
+      parts[part].push({ id: 'workout', label: note ? `Workout · ${note}` : 'Workout', detail: `${ALSO} · counts for Fitness`, tickKey: 'workout', extraId: extra.id })
+      continue
+    }
+    const activity = {
+      id: `x-${extra.id}`,
+      part,
+      log: extra.log ?? 'done',
+      note: extra.note,
+      ...(extra.counts === 'track' ? { trackId: extra.trackId } : { text: extra.text }),
+    }
+    const item = activityItem(activity, date, setup)
+    if (item) parts[part].push({ ...item, detail: [item.detail, ALSO].filter(Boolean).join(' · '), extraId: extra.id })
+  }
 
   return {
     date,

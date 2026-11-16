@@ -4,14 +4,22 @@
 
 <script lang="ts">
   import AddToggle from '../components/AddToggle.svelte'
+  import Cover from '../components/Cover.svelte'
   import Icon from '../components/Icon.svelte'
   import MoreNav from '../components/MoreNav.svelte'
+  import { coverLink, findCovers, lookAgain, type CoverChoice, type CoverQuery } from '../lib/covers'
   import { formatDate, parseDate } from '../lib/dates'
   import type { MediaItem, MediaStatus, Thumb } from '../lib/db'
+  import { ALL_FEATURES } from '../lib/features'
   import { live } from '../lib/live.svelte'
+  import { getFeatures } from '../lib/repo'
   import {
     SHELVES,
     addMedia,
+    getShelves,
+    isBuiltInShelf,
+    sectionShelf,
+    setCover,
     deleteMedia,
     finishMedia,
     finishedIn,
@@ -27,8 +35,10 @@
     type MediaChanges,
     type MediaOrder,
     type Shelf,
+    type ShelfInfo,
   } from '../lib/media'
   import { checkLetterboxd, getLetterboxd, importExport, profileLink, type MergeResult } from '../lib/letterboxd'
+  import { checkMovieParadise, connectMovieParadise, disconnectMovieParadise, getMovieParadise, type MovieParadiseLink } from '../lib/movieparadise'
 
   let { shelf, today, view = 'log' }: { shelf: Shelf; today: string; view?: MediaView } = $props()
 
@@ -41,7 +51,14 @@
   const STATUSES: MediaStatus[] = ['active', 'want', 'done', 'stopped']
   const VIEW_PATH: Record<MediaView, string> = { log: '', want: '/want', done: '/done', favorites: '/favorites' }
 
-  const info = $derived(SHELVES[shelf])
+  // Built-in tabs are known straight away; your own sections (F77) once the settings load.
+  const shelves = live(() => getShelves, null as ShelfInfo[] | null)
+  const found = $derived(isBuiltInShelf(shelf) ? SHELVES[shelf] : shelves.current?.find((candidate) => candidate.key === shelf))
+  const info = $derived(found ?? sectionShelf({ id: shelf, title: '', one: '', log: '', want: '', done: '', by: '', stars: false }))
+  const features = live(() => getFeatures, ALL_FEATURES)
+  const covers = $derived(features.current.covers)
+  /** "a book", "an album". */
+  const aOne = $derived(`${/^[aeiou]/i.test(info.one) ? 'an' : 'a'} ${info.one}`)
   const want = $derived(view === 'want')
   const items = live(() => {
     const current = shelf
@@ -100,8 +117,27 @@
   let newThumb = $state<Thumb | null>(null)
   let newFavorite = $state(false)
 
-  // Letterboxd, on Movies.
+  // Syncing (F81): Letterboxd on Movies, Movie Paradise on Movies and Shows, at the top of both.
   const letterboxd = live(() => getLetterboxd, { username: '' })
+  const movieParadise = live(() => getMovieParadise, null as MovieParadiseLink | null)
+  const syncs = $derived(shelf === 'movies' || shelf === 'shows')
+  let syncOpen = $state(false)
+  let mpToken = $state('')
+
+  async function connectMp(event: SubmitEvent) {
+    event.preventDefault()
+    letterboxdBusy = true
+    letterboxdMessage = null
+    try {
+      const link = await connectMovieParadise(mpToken)
+      mpToken = ''
+      letterboxdMessage = `Connected${link.username ? ` as ${link.username}` : ''}. Tap Check Movie Paradise to bring your films and shows in.`
+    } catch (error) {
+      letterboxdMessage = error instanceof Error ? error.message : String(error)
+    } finally {
+      letterboxdBusy = false
+    }
+  }
   let letterboxdMessage = $state<string | null>(null)
   let letterboxdBusy = $state(false)
 
@@ -123,6 +159,50 @@
     const files = [...(event.currentTarget.files ?? [])]
     event.currentTarget.value = ''
     if (files.length) void runLetterboxd(() => importExport(files))
+  }
+
+  // ── Covers (F78) ──
+
+  const coverQuery = (item: MediaItem): CoverQuery => ({ title: item.title, author: item.author, year: item.year, source: info.cover, one: info.one })
+
+  /** The covers on offer under one item's Edit. */
+  let choosing = $state<{ id: string; busy: boolean; choices: CoverChoice[]; message: string } | null>(null)
+
+  async function showChoices(item: MediaItem) {
+    choosing = { id: item.id, busy: true, choices: [], message: '' }
+    try {
+      const choices = (await findCovers(coverQuery(item))).slice(0, 8)
+      if (choosing?.id === item.id) choosing = { id: item.id, busy: false, choices, message: choices.length ? '' : 'No covers found for this title.' }
+    } catch {
+      if (choosing?.id === item.id) choosing = { id: item.id, busy: false, choices: [], message: "Couldn't look it up. Are you online?" }
+    }
+  }
+
+  async function chooseCover(item: MediaItem, url: string | null) {
+    await setCover(item.id, url)
+    choosing = null
+  }
+
+  async function pasteCover(item: MediaItem, input: HTMLInputElement) {
+    const value = input.value.trim()
+    if (!value) return
+    const url = coverLink(value)
+    if (!url) {
+      input.setCustomValidity('A link to a picture, starting with https://')
+      input.reportValidity()
+      return
+    }
+    input.setCustomValidity('')
+    input.value = ''
+    await chooseCover(item, url)
+  }
+
+  /** A new title for one that had no cover is looked up again. */
+  async function rename(item: MediaItem, title: string) {
+    if (item.cover === null) {
+      lookAgain(item.id)
+      await updateMedia(item.id, { title, cover: undefined })
+    } else await updateMedia(item.id, { title })
   }
 
   const day = (iso: string) => formatDate(parseDate(iso))
@@ -154,6 +234,7 @@
     if (!title) return
     await addMedia(info.kind, title, newStatus, today, {
       author: newAuthor.trim(),
+      section: info.custom ? info.key : undefined,
       format: info.format ?? undefined,
       started: newStarted || today,
       finished: newFinished || today,
@@ -196,7 +277,7 @@
 
 {#snippet rateButtons(item: MediaItem, labelId: string)}
   {#if info.stars}
-    {@render starButtons(item.rating, (rating) => updateMedia(item.id, { rating }), labelId)}
+    {@render starButtons(item.rating, (rating) => updateMedia(item.id, { rating, thumb: null }), labelId)}
   {:else}
     {@render thumbButtons(thumbOf(item), (thumb) => setThumb(item.id, thumb), labelId)}
   {/if}
@@ -212,15 +293,16 @@
   {@const detail = [status, when(item)].filter(Boolean).join(' · ')}
   <li class="row">
     <div class="routine-head">
+      {#if covers}<Cover {item} query={coverQuery(item)} />{/if}
       <span class="text grow">
         <span class="label">{item.title}</span>
         {#if about(item)}<span class="detail">{about(item)}</span>{/if}
         {#if detail || isRated(item)}
           <span class="detail rated">
             {detail}{#if detail && isRated(item)}&nbsp;·&nbsp;{/if}
-            {#if info.stars && item.rating}
+            {#if item.rating && (info.stars || !thumb)}
               <span aria-hidden="true">{'★'.repeat(item.rating)}{'☆'.repeat(5 - item.rating)}</span><span class="visually-hidden">rated {item.rating} of 5</span>
-            {:else if !info.stars && thumb}
+            {:else if thumb}
               <span class="thumb-mark"><Icon name={thumb.icon} /><span class="visually-hidden">{thumb.label}</span></span>
             {/if}
           </span>
@@ -253,13 +335,14 @@
             value={item.title}
             onchange={(event) => {
               const title = event.currentTarget.value.trim()
-              if (title) void updateMedia(item.id, { title })
+              if (title && title !== item.title) void rename(item, title)
             }}
           />
         </label>
-        {#if info.kind === 'book'}
-          <label>Author <input type="text" value={item.author} onchange={(event) => updateMedia(item.id, { author: event.currentTarget.value.trim() })} /></label>
-        {:else if info.kind === 'watch'}
+        {#if info.by}
+          <label>{info.by} <input type="text" value={item.author} onchange={(event) => updateMedia(item.id, { author: event.currentTarget.value.trim() })} /></label>
+        {/if}
+        {#if info.kind === 'watch'}
           <label>
             Movie or show
             <select value={item.format ?? 'movie'} onchange={(event) => updateMedia(item.id, { format: event.currentTarget.value === 'show' ? 'show' : 'movie' })}>
@@ -288,6 +371,37 @@
           {@render rateButtons(item, `rating-${item.id}`)}
         </div>
         <label>Notes <textarea rows="3" value={item.notes} onchange={(event) => updateMedia(item.id, { notes: event.currentTarget.value })}></textarea></label>
+        {#if covers}
+          <div class="field cover-field">
+            <span class="field-label">Cover</span>
+            <div class="cover-actions">
+              <button type="button" class="button small secondary" disabled={choosing?.id === item.id && choosing.busy} onclick={() => showChoices(item)}
+                >{choosing?.id === item.id && choosing.busy ? 'Looking…' : 'Choose a cover'}</button
+              >
+              {#if item.cover}<button type="button" class="link" onclick={() => chooseCover(item, null)}>No cover</button>{/if}
+            </div>
+            {#if choosing?.id === item.id && !choosing.busy}
+              {#if choosing.choices.length}
+                <div class="cover-choices" role="group" aria-label="Covers found">
+                  {#each choosing.choices as choice (choice.url)}
+                    <button type="button" title={choice.label} aria-label={choice.label} aria-pressed={item.cover === choice.url} onclick={() => chooseCover(item, choice.url)}>
+                      <img src={choice.url} alt="" loading="lazy" referrerpolicy="no-referrer" />
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+              {#if choosing.message}<p class="muted small" role="status">{choosing.message}</p>{/if}
+            {/if}
+            <input
+              type="url"
+              inputmode="url"
+              placeholder="Or paste a picture's link (https://…)"
+              aria-label="A picture's link for the cover"
+              oninput={(event) => event.currentTarget.setCustomValidity('')}
+              onchange={(event) => pasteCover(item, event.currentTarget)}
+            />
+          </div>
+        {/if}
         <button type="button" class="link danger" onclick={() => window.confirm(`Delete "${item.title}"?`) && deleteMedia(item.id)}>Delete</button>
       </div>
     </details>
@@ -301,6 +415,13 @@
   </div>
 {/snippet}
 
+{#if !found}
+  <header>
+    <h1>More</h1>
+    <p class="date">{shelves.current ? 'This section isn’t here any more.' : 'Loading…'}</p>
+  </header>
+  {#if shelves.current}<p class="small"><a href="#/settings">Settings → What you use</a> lists your sections.</p>{/if}
+{:else}
 <header class="with-add">
   <div>
     <h1>{info.title}</h1>
@@ -315,17 +436,83 @@
     </p>
   </div>
   {#if view !== 'favorites'}
-    <AddToggle bind:open={adding} label={view === 'want' ? `Add to ${info.want.toLowerCase()}` : `Add a ${info.one}`} />
+    <AddToggle bind:open={adding} label={view === 'want' ? `Add to ${info.want.toLowerCase()}` : `Add ${aOne}`} />
   {/if}
 </header>
 
 <MoreNav current={shelf} {view} />
 
+{#if syncs}
+  <div class="sync-bar">
+    {#if shelf === 'movies' && letterboxd.current.username}
+      <button type="button" class="button small secondary" disabled={letterboxdBusy} onclick={() => runLetterboxd(checkLetterboxd)}>Check Letterboxd</button>
+    {/if}
+    {#if movieParadise.current}
+      <button type="button" class="button small secondary" disabled={letterboxdBusy} onclick={() => runLetterboxd(() => checkMovieParadise())}>Check Movie Paradise</button>
+    {/if}
+    <button type="button" class="link small" aria-expanded={syncOpen} onclick={() => (syncOpen = !syncOpen)}
+      >{(shelf === 'movies' && letterboxd.current.username) || movieParadise.current ? 'Sync settings' : 'Sync with Letterboxd or Movie Paradise'}</button
+    >
+    {#if letterboxdBusy}<span class="muted small" role="status">Checking…</span>{/if}
+  </div>
+  {#if letterboxdMessage}<p class="small sync-message" role="status">{letterboxdMessage}</p>{/if}
+  {#if syncOpen}
+    <div class="card sync-settings">
+      {#if shelf === 'movies'}
+        <section class="letterboxd" aria-label="Letterboxd">
+          <h2>Letterboxd</h2>
+          {#if letterboxd.current.username}
+            <p class="small">
+              <a href={profileLink(letterboxd.current.username)} target="_blank" rel="noopener noreferrer">Open your Letterboxd</a>
+              · <a href="{profileLink(letterboxd.current.username)}watchlist/" target="_blank" rel="noopener noreferrer">Watchlist</a>
+            </p>
+            <p class="muted small">Check Letterboxd brings in films from your diary (the latest 50) with the day you watched them, your rating and your heart. Only when you tap it.</p>
+          {:else}
+            <p class="small">Add your Letterboxd username in <a href="#/setup">Settings → Setup</a> to check it for new films from here.</p>
+          {/if}
+          <label class="file-button">
+            <span class="button small secondary">Import a Letterboxd export</span>
+            <input class="visually-hidden" type="file" accept=".zip,.csv" multiple disabled={letterboxdBusy} onchange={chooseExport} />
+          </label>
+          <p class="muted small">
+            On letterboxd.com: Settings → Import &amp; Export → Export your data, then choose the .zip here. Your diary, everything you've watched, your ratings, your
+            hearts and your watchlist come in. Films already here are updated, not doubled.
+          </p>
+        </section>
+      {/if}
+      <section class="movie-paradise" aria-label="Movie Paradise">
+        <h2>Movie Paradise</h2>
+        {#if movieParadise.current}
+          <p class="small">
+            Connected{movieParadise.current.username ? ` as ${movieParadise.current.username}` : ''}{movieParadise.current.expires
+              ? ` · the token runs out on ${day(movieParadise.current.expires)}`
+              : ''}.
+          </p>
+          <p class="muted small">
+            Check Movie Paradise brings in your films and shows: what you watched and when, what you're watching, ratings, hearts and your watchlist. Films and shows already here are updated,
+            not doubled. Each check uses 3 of the 20 reads a day Movie Paradise's free plan allows. Nothing is written to Movie Paradise.
+          </p>
+          <button type="button" class="link danger" onclick={() => disconnectMovieParadise()}>Disconnect</button>
+        {:else}
+          <p class="muted small">
+            In Movie Paradise: Settings → Connections → Developer API → make a token (reading is enough). Paste it here. It stays on this device only: it isn't synced or
+            in backups, so connect each device you check from. Tokens run out (after 90 days unless you pick longer); then make a new one.
+          </p>
+          <form class="add" onsubmit={connectMp}>
+            <input type="password" autocomplete="off" bind:value={mpToken} placeholder="mp_pat_…" aria-label="Movie Paradise token" />
+            <button type="submit" class="button small" disabled={letterboxdBusy || !mpToken.trim()}>Connect</button>
+          </form>
+        {/if}
+      </section>
+    </div>
+  {/if}
+{/if}
+
 <nav class="subtabs media-subtabs" aria-label="{info.log}, {info.want}, {info.done} and favourites">
-  <a href="#/{shelf}" aria-current={view === 'log' ? 'page' : undefined}>{info.log}</a>
-  <a href="#/{shelf}/want" aria-current={view === 'want' ? 'page' : undefined}>{info.want}</a>
-  <a href="#/{shelf}/done" aria-current={view === 'done' ? 'page' : undefined}>{info.done}</a>
-  <a href="#/{shelf}/favorites" class="fav-tab" aria-current={view === 'favorites' ? 'page' : undefined} aria-label="Favourites" title="Favourites"
+  <a href={info.href} aria-current={view === 'log' ? 'page' : undefined}>{info.log}</a>
+  <a href="{info.href}/want" aria-current={view === 'want' ? 'page' : undefined}>{info.want}</a>
+  <a href="{info.href}/done" aria-current={view === 'done' ? 'page' : undefined}>{info.done}</a>
+  <a href="{info.href}/favorites" class="fav-tab" aria-current={view === 'favorites' ? 'page' : undefined} aria-label="Favourites" title="Favourites"
     ><Icon name={view === 'favorites' ? 'heart-fill' : 'heart'} /></a
   >
 </nav>
@@ -347,14 +534,14 @@
 {:else}
   {#if adding}
   <section>
-    <h2>{want ? `Add to ${info.want.toLowerCase()}` : view === 'done' ? `Add a ${info.one} you finished` : `Add a ${info.one}`}</h2>
+    <h2>{want ? `Add to ${info.want.toLowerCase()}` : view === 'done' ? `Add ${aOne} you finished` : `Add ${aOne}`}</h2>
     <form class="card edit-panel add-media" onsubmit={submit}>
       <div class="title-row">
         <input type="text" bind:value={newTitle} placeholder="Title" aria-label="New {info.one}" />
         {@render heartButton(newFavorite, () => (newFavorite = !newFavorite), 'Favourite')}
       </div>
-      {#if info.kind === 'book'}
-        <input type="text" bind:value={newAuthor} placeholder="Author (optional)" aria-label="Author" />
+      {#if info.by}
+        <input type="text" bind:value={newAuthor} placeholder="{info.by} (optional)" aria-label={info.by} />
       {/if}
       {#if !want}
         <label>
@@ -426,35 +613,10 @@
           {#each groups.active as item (item.id)}{@render itemRow(item)}{/each}
         </ul>
       {:else}
-        <p class="muted small">Nothing on the go. Tap + to add a {info.one}, or start one from {info.want}.</p>
+        <p class="muted small">Nothing on the go. Tap + to add {aOne}, or start one from {info.want}.</p>
       {/if}
     </section>
   {/if}
 {/if}
 
-{#if shelf === 'movies' && view === 'done'}
-  <section>
-    <details class="card letterboxd" open={!!letterboxdMessage}>
-      <summary>Letterboxd</summary>
-      {#if letterboxd.current.username}
-        <p class="small">
-          <a href={profileLink(letterboxd.current.username)} target="_blank" rel="noopener noreferrer">Open your Letterboxd</a>
-          · <a href="{profileLink(letterboxd.current.username)}watchlist/" target="_blank" rel="noopener noreferrer">Watchlist</a>
-        </p>
-        <button type="button" class="button small" disabled={letterboxdBusy} onclick={() => runLetterboxd(checkLetterboxd)}>Check Letterboxd</button>
-        <p class="muted small">Brings in films from your Letterboxd diary (the latest 50) with the day you watched them, your rating and your heart. Only when you tap it.</p>
-      {:else}
-        <p class="small">Add your Letterboxd username in <a href="#/setup">Settings → Setup</a> to link it here and check it for new films.</p>
-      {/if}
-      <label class="file-button">
-        <span class="button small secondary">Import a Letterboxd export</span>
-        <input class="visually-hidden" type="file" accept=".zip,.csv" multiple disabled={letterboxdBusy} onchange={chooseExport} />
-      </label>
-      <p class="muted small">
-        On letterboxd.com: Settings → Import &amp; Export → Export your data, then choose the .zip here. Your diary, everything you've watched, your ratings, your hearts
-        and your watchlist come in. Films already here are updated, not doubled.
-      </p>
-      {#if letterboxdMessage}<p class="small" role="status">{letterboxdMessage}</p>{/if}
-    </details>
-  </section>
 {/if}

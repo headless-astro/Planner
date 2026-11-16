@@ -7,6 +7,7 @@
   import type { Crunch, Dose, Entry, Habit, Task, Topic, Track, TrackSession } from '../lib/db'
   import { live } from '../lib/live.svelte'
   import { buildDay, type PlanItem } from '../lib/plan'
+  import { addExtra, countsAsChoices, extrasOf, removeExtra } from '../lib/extras'
   import {
     addTodo,
     clearEntry,
@@ -27,6 +28,7 @@
     setEntry,
     setMeasurement,
     setTodoDone,
+    setTodoPart,
     toggleTick,
     type DayMeasurements,
     type DayValues,
@@ -80,6 +82,7 @@
       sessions: allSessions.current,
       exercise: exercise.current,
       features: features.current,
+      extras: extrasOf(values.current.extras),
     }),
   )
   const crunchDay = $derived(isCrunchDay(crunches.current, date))
@@ -143,16 +146,19 @@
     if (item.trackId) void saveSession(item.trackId, date, details, session ? session.activityId : item.activity?.id)
   }
 
-  /** Done and total for each part. Any time also holds routines, list tasks and to-dos. */
+  /** A part's to-dos (F80): any time unless one was added to the morning or evening. */
+  const todosIn = (id: Part) => todos.current.filter((todo) => (todo.part ?? 'anytime') === id)
+
+  /** Done and total for each part. Any time also holds routines and list tasks. */
   const progress = $derived.by(() => {
-    const count = (items: PlanItem[]) => ({ done: items.filter(itemDone).length, total: items.length })
-    const anytime = count(plan.anytime)
-    anytime.done +=
-      shownRoutines.filter((status) => status.doneThatDay).length +
-      dueTasks.current.filter((due) => due.task.done).length +
-      todos.current.filter((todo) => todo.done).length
-    anytime.total += shownRoutines.length + dueTasks.current.length + todos.current.length
-    return { morning: count(plan.morning), anytime, evening: count(plan.evening) }
+    const count = (items: PlanItem[], id: Part) => {
+      const own = todosIn(id)
+      return { done: items.filter(itemDone).length + own.filter((todo) => todo.done).length, total: items.length + own.length }
+    }
+    const anytime = count(plan.anytime, 'anytime')
+    anytime.done += shownRoutines.filter((status) => status.doneThatDay).length + dueTasks.current.filter((due) => due.task.done).length
+    anytime.total += shownRoutines.length + dueTasks.current.length
+    return { morning: count(plan.morning, 'morning'), anytime, evening: count(plan.evening, 'evening') }
   })
 
   /** The part that fits the time of day: the day turns over at 06:00, and mornings start late (A24). */
@@ -202,12 +208,34 @@
     return Number.isFinite(value) ? value : null
   }
 
+  // ── Adding to the day (F79, F80): a to-do, or something that counts, in any part ──
+  let newPart = $state<Part>('anytime')
+  let countsAs = $state('')
+
+  /** What the day already has, so "Counts as" doesn't offer it twice. */
+  const onDay = $derived(
+    new Set(
+      [...plan.morning, ...plan.anytime, ...plan.evening].map((item) => (item.id === 'workout' ? 'workout' : item.trackId ? `track:${item.trackId}` : (item.tickKey ?? item.id))),
+    ),
+  )
+  const choices = $derived(week.current ? countsAsChoices(date, { week: week.current, tracks: tracks.current, exercise: on.exercise, onDay }) : [])
+  const chosen = $derived(choices.find((choice) => choice.value === countsAs))
+
   async function submitTodo(event: SubmitEvent) {
     event.preventDefault()
-    const title = newTodo.trim()
-    if (!title) return
+    const text = newTodo.trim()
+    const part = newPart
+    if (chosen) {
+      await addExtra(date, values.current.extras, { ...chosen.extra, part, ...(text ? { note: text } : {}) })
+    } else {
+      if (!text) return
+      await addTodo(text, date, part)
+    }
     newTodo = ''
-    await addTodo(title, date)
+    countsAs = ''
+    newPart = 'anytime'
+    // Show the part it went to.
+    chosenPart = part
   }
 
   function todoDetail(todo: Task): string {
@@ -282,6 +310,7 @@
       </span>
     </label>
     {#if item.link}<a class="item-link" href={item.link.href}>{item.link.text}</a>{/if}
+    {@render removeExtraButton(item, ticked(item.tickKey ?? item.id))}
     {#if item.steps}
       <details class="steps">
         <summary>{item.stepsLabel ?? 'Show steps'}</summary>
@@ -356,6 +385,7 @@
       </span>
     </label>
     {#if item.link}<a class="item-link" href={item.link.href}>{item.link.text}</a>{/if}
+    {@render removeExtraButton(item, !!session)}
     {#if item.steps}
       <details class="steps">
         <summary>{item.stepsLabel ?? 'Show more'}</summary>
@@ -388,6 +418,47 @@
       </div>
     {/if}
   </li>
+{/snippet}
+
+{#snippet todoRow(todo: Task)}
+  <li class="row" class:done={todo.done}>
+    <label class="check">
+      <input type="checkbox" checked={todo.done} onchange={() => setTodoDone(todo.id, !todo.done, date)} />
+      <span class="text">
+        <span class="label">{todo.title}</span>
+        <span class="detail">{todoDetail(todo)}</span>
+      </span>
+    </label>
+    <details class="steps">
+      <summary>Edit</summary>
+      <div class="todo-options">
+        <label>
+          Move to
+          <input
+            type="date"
+            value={todo.date ?? date}
+            onchange={(event) => {
+              if (event.currentTarget.value) void moveTodo(todo.id, event.currentTarget.value)
+            }}
+          />
+        </label>
+        <label>
+          Part of the day
+          <select value={todo.part ?? 'anytime'} onchange={(event) => setTodoPart(todo.id, event.currentTarget.value as Part)}>
+            {#each PARTS as option (option.id)}<option value={option.id}>{option.label}</option>{/each}
+          </select>
+        </label>
+        <button type="button" class="link danger" onclick={() => deleteTodo(todo.id)}>Delete</button>
+      </div>
+    </details>
+  </li>
+{/snippet}
+
+{#snippet removeExtraButton(item: PlanItem, done: boolean)}
+  {#if item.extraId && !done}
+    {@const extraId = item.extraId}
+    <button type="button" class="link small remove-extra" onclick={() => removeExtra(date, values.current.extras, extraId)}>Take off this day</button>
+  {/if}
 {/snippet}
 
 {#snippet itemRow(item: PlanItem)}
@@ -434,9 +505,10 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <div class="part part-panel {part}" role="tabpanel" aria-label={PARTS.find((candidate) => candidate.id === part)?.label} onclickcapture={keepPart}>
 {#if part === 'morning'}
-  {#if plan.morning.length}
+  {#if plan.morning.length || todosIn('morning').length}
     <ul class="list">
       {#each plan.morning as item (item.id)}{@render itemRow(item)}{/each}
+      {#each todosIn('morning') as todo (todo.id)}{@render todoRow(todo)}{/each}
     </ul>
   {:else}
     <p class="muted small">Nothing planned this morning.</p>
@@ -466,33 +538,7 @@
         </label>
       </li>
     {/each}
-    {#each todos.current as todo (todo.id)}
-      <li class="row" class:done={todo.done}>
-        <label class="check">
-          <input type="checkbox" checked={todo.done} onchange={() => setTodoDone(todo.id, !todo.done, date)} />
-          <span class="text">
-            <span class="label">{todo.title}</span>
-            <span class="detail">{todoDetail(todo)}</span>
-          </span>
-        </label>
-        <details class="steps">
-          <summary>Edit</summary>
-          <div class="todo-options">
-            <label>
-              Move to
-              <input
-                type="date"
-                value={todo.date ?? date}
-                onchange={(event) => {
-                  if (event.currentTarget.value) void moveTodo(todo.id, event.currentTarget.value)
-                }}
-              />
-            </label>
-            <button type="button" class="link danger" onclick={() => deleteTodo(todo.id)}>Delete</button>
-          </div>
-        </details>
-      </li>
-    {/each}
+    {#each todosIn('anytime') as todo (todo.id)}{@render todoRow(todo)}    {/each}
   </ul>
   {#if hiddenRoutines}
     <p class="small"><a href="#/routines">and {hiddenRoutines} more late {hiddenRoutines === 1 ? 'routine' : 'routines'} →</a></p>
@@ -502,20 +548,48 @@
       <a href="#/routines">{notStarted} {notStarted === 1 ? 'routine isn’t' : 'routines aren’t'} started yet. Mark when you last did them →</a>
     </p>
   {/if}
-  <form class="add" onsubmit={submitTodo}>
-    <input type="text" bind:value={newTodo} placeholder="Add a to-do" aria-label="New to-do" />
-    <button type="submit" class="button">Add</button>
-  </form>
-
 {:else}
-  {#if plan.evening.length}
+  {#if plan.evening.length || todosIn('evening').length}
     <ul class="list">
       {#each plan.evening as item (item.id)}{@render itemRow(item)}{/each}
+      {#each todosIn('evening') as todo (todo.id)}{@render todoRow(todo)}{/each}
     </ul>
   {:else}
     <p class="muted small">Nothing planned this evening.</p>
   {/if}
 {/if}
+
+  <!-- One form for every part: a to-do, or something that counts, for this day only (F79, F80). -->
+  <form class="add-day card" onsubmit={submitTodo}>
+    <div class="add">
+      <input
+        type="text"
+        bind:value={newTodo}
+        placeholder={chosen ? 'A note (optional)' : 'Add a to-do'}
+        aria-label={chosen ? 'A note on it' : 'New to-do'}
+      />
+      <button type="submit" class="button">Add</button>
+    </div>
+    <div class="add-day-options">
+      <div class="seg" role="group" aria-label="Part of the day">
+        {#each PARTS as option (option.id)}
+          <button type="button" aria-pressed={newPart === option.id} onclick={() => (newPart = option.id)}>{option.label}</button>
+        {/each}
+      </div>
+      {#if choices.length}
+        <label class="counts-as">
+          Counts as
+          <select value={countsAs} onchange={(event) => (countsAs = event.currentTarget.value)}>
+            <option value="">Nothing, it's a to-do</option>
+            {#each choices as choice (choice.value)}<option value={choice.value}>{choice.label}</option>{/each}
+          </select>
+        </label>
+      {/if}
+    </div>
+    {#if chosen}
+      <p class="muted small">Added to this day only. Tick it when it's done and it counts in This week and Insights, like the planned one.</p>
+    {/if}
+  </form>
 </div>
 
 {#if on.food || on.diary}

@@ -1,9 +1,10 @@
 <script lang="ts">
-  // The chips at the top of More: Books, Games, Movies, Shows and Recipes (F61). Switching keeps
-  // the kind of sub-tab you're on: what you're on now, want to, finished, or favourites.
+  // The chips at the top of More: Books, Games, Movies, Shows, your own sections (F77) and
+  // Recipes (F61). Switching keeps the kind of sub-tab you're on: what you're on now, want to,
+  // finished, or favourites.
   import { ALL_FEATURES } from '../lib/features'
   import { live } from '../lib/live.svelte'
-  import { SHELVES, type Shelf } from '../lib/media'
+  import { BUILT_IN_SHELVES, getShelves, listSections, visibleShelves, type CustomSection, type Shelf } from '../lib/media'
   import { getFeatures } from '../lib/repo'
 
   type View = 'log' | 'want' | 'done' | 'favorites'
@@ -17,12 +18,15 @@
   const shelfView = $derived(current === 'recipes' ? fromRecipes[view] : view)
   // Shelves that are turned off aren't shown (F63); the one you're on always is.
   const features = live(() => getFeatures, ALL_FEATURES)
-  const shelves = $derived((Object.entries(SHELVES) as [Shelf, (typeof SHELVES)[Shelf]][]).filter(([key]) => features.current[key] || key === current))
+  const all = live(() => getShelves, BUILT_IN_SHELVES)
+  const sections = live(() => listSections, [] as CustomSection[])
+  const shown = $derived(new Set(visibleShelves(all.current, sections.current, features.current).map((info) => info.key)))
+  const shelves = $derived(all.current.filter((info) => shown.has(info.key) || info.key === current))
 </script>
 
-<nav class="chips list-tabs" aria-label="Books, games, movies, shows and recipes">
-  {#each shelves as [key, value] (key)}
-    <a class="chip" href="#/{key}{SHELF_PATH[shelfView]}" aria-current={key === current ? 'page' : undefined}>{value.title}</a>
+<nav class="chips list-tabs" aria-label="Sections in More">
+  {#each shelves as info (info.key)}
+    <a class="chip" href="{info.href}{SHELF_PATH[shelfView]}" aria-current={info.key === current ? 'page' : undefined}>{info.title}</a>
   {/each}
   {#if features.current.recipes || current === 'recipes'}
     <a class="chip" href="#/recipes{RECIPE_PATH[view]}" aria-current={current === 'recipes' ? 'page' : undefined}>Recipes</a>
