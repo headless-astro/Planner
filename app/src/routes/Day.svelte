@@ -4,7 +4,7 @@
   import { ALL_FEATURES } from '../lib/features'
   import { countCrunchDays, endCrunch, isCrunchDay, listCrunches, startCrunch } from '../lib/crunch'
   import { addDays, formatShort, parseDate, toISODate, weekStart } from '../lib/dates'
-  import type { Crunch, Dose, Entry, Habit, Task, Topic, Track, TrackSession } from '../lib/db'
+  import type { Crunch, Dose, Entry, Habit, Task, TaskList, Topic, Track, TrackSession } from '../lib/db'
   import { live } from '../lib/live.svelte'
   import { buildDay, type PlanItem } from '../lib/plan'
   import { addExtra, countsAsChoices, extrasOf, removeExtra } from '../lib/extras'
@@ -35,7 +35,9 @@
   } from '../lib/repo'
   import { dueText, getRoutineStatuses, setRoutineDone, type RoutineStatus } from '../lib/routines'
   import { DEFAULT_FOOD_RULES, DEFAULT_TARGETS, type DayTemplate } from '../lib/setup'
-  import { dueLabel, getDueTasks, setTaskDone, type DueTask } from '../lib/tasks'
+  import { dueLabel, getDueTasks, listLists, setTaskDone, type DueTask } from '../lib/tasks'
+  import { getShelves, listSections, visibleShelves, type CustomSection, type ShelfInfo } from '../lib/media'
+  import { addShortcut, getShortcuts, moveShortcut, removeShortcut, shortcutChoices, type Shortcut } from '../lib/shortcuts'
   import { listAllSteps, listSessions, listTracks, saveSession, sessionFor, setActivityDone, stepsOf } from '../lib/tracks'
   import { EATING_CHOICES, countText, weekCounters } from '../lib/week'
 
@@ -67,6 +69,36 @@
   const allSessions = live(() => listSessions, [] as TrackSession[])
   const steps = live(() => listAllSteps, [] as Topic[])
   const body = live(() => () => getDayMeasurements(date), {} as DayMeasurements)
+  // Shortcuts next to the date (F82), and what they can open.
+  const shortcuts = live(() => getShortcuts, [] as Shortcut[])
+  const taskLists = live(() => listLists, [] as TaskList[])
+  const shelves = live(() => getShelves, [] as ShelfInfo[])
+  const sections = live(() => listSections, [] as CustomSection[])
+  const shortcutTargets = $derived(
+    shortcutChoices({
+      lists: taskLists.current,
+      tracks: tracks.current,
+      shelves: visibleShelves(shelves.current, sections.current, on),
+      features: on,
+    }),
+  )
+  // A renamed list or track shows its new name.
+  const shownShortcuts = $derived(
+    shortcuts.current.map((shortcut) => ({ ...shortcut, label: shortcutTargets.find((choice) => choice.href === shortcut.href)?.label ?? shortcut.label })),
+  )
+  const unusedChoices = $derived(shortcutTargets.filter((choice) => !shortcuts.current.some((shortcut) => shortcut.href === choice.href)))
+  const CHOICE_GROUPS = ['Lists', 'Tracks', 'Screens', 'More'] as const
+  let editingShortcuts = $state(false)
+  let shortcutPick = $state('')
+
+  async function submitShortcut(event: SubmitEvent) {
+    event.preventDefault()
+    const choice = shortcutTargets.find((candidate) => candidate.href === shortcutPick)
+    if (!choice) return
+    await addShortcut({ label: choice.label, href: choice.href })
+    shortcutPick = ''
+  }
+
   const weekEntries = live(() => {
     const from = monday
     const to = sunday
@@ -471,10 +503,67 @@
   {/if}
 {/snippet}
 
-<header>
-  <h1>{plan.weekday}</h1>
-  <p class="date">{plan.dateText}</p>
+<header class="day-header">
+  <div>
+    <h1>{plan.weekday}</h1>
+    <p class="date">{plan.dateText}</p>
+  </div>
+  {#if isToday}
+    <nav class="shortcuts" aria-label="Shortcuts">
+      {#each shownShortcuts as shortcut (shortcut.href)}<a class="chip" href={shortcut.href}>{shortcut.label}</a>{/each}
+      <button
+        type="button"
+        class="chip shortcut-edit"
+        aria-expanded={editingShortcuts}
+        aria-label={shownShortcuts.length ? 'Change shortcuts' : 'Add a shortcut'}
+        onclick={() => (editingShortcuts = !editingShortcuts)}
+        ><Icon name={shownShortcuts.length ? 'pencil' : 'plus'} />{shownShortcuts.length ? '' : 'Shortcut'}</button
+      >
+    </nav>
+  {/if}
 </header>
+
+{#if isToday && editingShortcuts}
+  <div class="card shortcut-panel">
+    <p class="small muted">Shortcuts open a list or screen in one tap.</p>
+    {#if shownShortcuts.length}
+      <ul class="plain">
+        {#each shownShortcuts as shortcut, index (shortcut.href)}
+          <li class="row-line">
+            <span class="grow">{shortcut.label}</span>
+            <button type="button" class="remove" aria-label="Move {shortcut.label} earlier" disabled={index === 0} onclick={() => moveShortcut(shortcut.href, -1)}
+              >↑</button
+            >
+            <button
+              type="button"
+              class="remove"
+              aria-label="Move {shortcut.label} later"
+              disabled={index === shownShortcuts.length - 1}
+              onclick={() => moveShortcut(shortcut.href, 1)}>↓</button
+            >
+            <button type="button" class="remove" aria-label="Remove the shortcut {shortcut.label}" onclick={() => removeShortcut(shortcut.href)}>×</button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    {#if unusedChoices.length}
+      <form class="add-row" onsubmit={submitShortcut}>
+        <select class="grow" value={shortcutPick} aria-label="Shortcut to add" onchange={(event) => (shortcutPick = event.currentTarget.value)}>
+          <option value="">Add a shortcut to…</option>
+          {#each CHOICE_GROUPS as group (group)}
+            {#if unusedChoices.some((choice) => choice.group === group)}
+              <optgroup label={group}>
+                {#each unusedChoices.filter((choice) => choice.group === group) as choice (choice.href)}<option value={choice.href}>{choice.label}</option>{/each}
+              </optgroup>
+            {/if}
+          {/each}
+        </select>
+        <button type="submit" class="button" disabled={!shortcutPick}>Add</button>
+      </form>
+    {/if}
+    <button type="button" class="link" onclick={() => (editingShortcuts = false)}>Done</button>
+  </div>
+{/if}
 
 {#if !isToday}
   <p class="notice">You're looking at another day. Changes still save. <a href="#/today">Back to today</a></p>
@@ -533,7 +622,7 @@
           <input type="checkbox" checked={due.task.done} onchange={() => setTaskDone(due.task.id, !due.task.done, date)} />
           <span class="text">
             <span class="label">{due.task.title}</span>
-            <span class="detail">{due.listName} · {due.task.done ? 'done' : dueLabel(due.task, date)}</span>
+            <span class="detail">{due.listName}{due.parentTitle ? ` · ${due.parentTitle}` : ''} · {due.task.done ? 'done' : dueLabel(due.task, date)}</span>
           </span>
         </label>
       </li>

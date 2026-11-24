@@ -62,7 +62,7 @@
   ] as const
   type Screen = (typeof SCREENS)[number]
   type Route =
-    | { name: Screen; view?: MediaView; adding?: boolean }
+    | { name: Screen; view?: MediaView; adding?: boolean; listId?: string }
     | { name: 'day'; date: string }
     | { name: 'track'; id: string }
     | { name: 'shelf'; id: string; view: MediaView }
@@ -137,6 +137,8 @@
     if (name === 'join') return { name: 'join', payload: argument ?? '' }
     // Projects moved into Lists in M7.
     if (name === 'projects') return { name: 'lists' }
+    // One list, for shortcuts on Today (F82): #/lists/<id>.
+    if (name === 'lists' && argument && argument !== 'new') return { name: 'lists', listId: argument }
     if (name === 'more') return { name: 'books' }
     // Recipes are a shelf in More too (F61): Cooked, Want to try, favourites.
     if (name === 'recipes') return { name: 'recipes', view: argument === 'want' || argument === 'favorites' ? argument : 'log' }
@@ -260,7 +262,7 @@
   {:else if route.name === 'plans'}
     <Plans {today} />
   {:else if route.name === 'lists'}
-    <Lists {today} />
+    <Lists {today} listId={'listId' in route ? route.listId : undefined} />
   {:else if route.name === 'upcoming'}
     <Upcoming {today} />
   {:else if route.name === 'routines'}

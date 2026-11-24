@@ -105,12 +105,16 @@ export function buildUpcoming(input: UpcomingInput): Upcoming {
 
   // List tasks by their deadline, and to-dos on their day (unfinished ones carry over to today, D21).
   const listNames = new Map(input.lists.map((list) => [list.id, list.name]))
+  const tasksById = new Map(input.tasks.map((task) => [task.id, task]))
   for (const task of input.tasks) {
     if (task.done) continue
     if (task.listId !== null) {
       if (!task.due || !listNames.has(task.listId)) continue
-      const item = { id: `task:${task.id}`, kind: 'task' as const, title: task.title, href: '#/lists' }
-      const list = listNames.get(task.listId)
+      // A subtask (F83) shows with its task's name, and not once that task is done or deleted.
+      const parent = task.parentId === null ? null : tasksById.get(task.parentId)
+      if (task.parentId !== null && (!parent || parent.done || parent.deleted)) continue
+      const item = { id: `task:${task.id}`, kind: 'task' as const, title: task.title, href: `#/lists/${task.listId}` }
+      const list = parent ? `${listNames.get(task.listId)} · ${parent.title}` : listNames.get(task.listId)
       if (task.due < today) late.push({ ...item, detail: `${list} · late since ${formatShort(parseDate(task.due))}` })
       else if (task.due <= last) add(task.due, { ...item, detail: `${list}${task.due === today ? ' · due today' : ''}` })
     } else if (task.parentId === null && task.date) {

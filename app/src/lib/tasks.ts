@@ -41,12 +41,16 @@ export async function getListTasks(listId: string): Promise<ListTasks> {
   const tasks = alive(await db.tasks.where('listId').equals(listId).toArray())
   const topLevel = tasks.filter((task) => task.parentId === null)
   const subtasksOf = (id: string) => tasks.filter((task) => task.parentId === id).sort(byOrder)
+  // A task is as urgent as its soonest deadline, its own or an open subtask's (F83).
+  const soonest = (task: Task) =>
+    [task.due, ...subtasksOf(task.id).filter((sub) => !sub.done).map((sub) => sub.due)].filter((due): due is string => !!due).sort()[0] ?? null
   return {
     // Tasks with a deadline come first, soonest first; the rest keep your order (F49).
     open: topLevel
       .filter((task) => !task.done)
-      .sort((a, b) => (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0) || byOrder(a, b))
-      .map((task) => ({ ...task, subtasks: subtasksOf(task.id) })),
+      .map((task) => ({ task, due: soonest(task) }))
+      .sort((a, b) => (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0) || byOrder(a.task, b.task))
+      .map(({ task }) => ({ ...task, subtasks: subtasksOf(task.id) })),
     archived: topLevel.filter((task) => task.done).sort((a, b) => (b.doneDate ?? '').localeCompare(a.doneDate ?? '')),
   }
 }
@@ -92,6 +96,8 @@ export async function deleteTask(id: string): Promise<void> {
 export interface DueTask {
   task: Task
   listName: string
+  /** For a subtask, the task it's part of. */
+  parentTitle?: string
 }
 
 /**
@@ -100,11 +106,19 @@ export interface DueTask {
  */
 export async function getDueTasks(date: string, isToday: boolean): Promise<DueTask[]> {
   const lists = new Map((await listLists()).filter((list) => list.showOnToday).map((list) => [list.id, list.name]))
-  return alive(await db.tasks.toArray())
+  const tasks = alive(await db.tasks.toArray())
+  const byId = new Map(tasks.map((task) => [task.id, task]))
+  return tasks
     .filter((task) => task.listId !== null && lists.has(task.listId))
+    // A subtask whose task is done or deleted is left out (F83).
+    .filter((task) => task.parentId === null || (byId.has(task.parentId) && !byId.get(task.parentId)?.done))
     .filter((task) => (task.done ? task.doneDate === date : task.due !== null && (isToday ? task.due <= date : task.due === date)))
     .sort((a, b) => (a.due ?? '').localeCompare(b.due ?? '') || a.order - b.order)
-    .map((task) => ({ task, listName: lists.get(task.listId ?? '') ?? '' }))
+    .map((task) => ({
+      task,
+      listName: lists.get(task.listId ?? '') ?? '',
+      ...(task.parentId ? { parentTitle: byId.get(task.parentId)?.title } : {}),
+    }))
 }
 
 /** "due today", "late since Mon 2 Nov" or "due Thu 5 Nov". */

@@ -19,10 +19,11 @@
     type ListTasks,
   } from '../lib/tasks'
 
-  let { today }: { today: string } = $props()
+  let { today, listId }: { today: string; listId?: string } = $props()
 
   const lists = live(() => listLists, [] as TaskList[])
-  let selectedId = $state<string | null>(null)
+  // A shortcut on Today opens one list (F82); tapping another list's chip switches to it.
+  let selectedId = $derived<string | null>(listId ?? null)
   const selected = $derived(lists.current.find((list) => list.id === selectedId) ?? lists.current[0] ?? null)
   const tasks = live(
     () => {
@@ -37,6 +38,7 @@
   let newList = $state('')
   let addingList = $state(false)
   let subtaskDrafts = $state<Record<string, string>>({})
+  let subtaskDueDrafts = $state<Record<string, string>>({})
 
   const confirmDelete = (name: string) => window.confirm(`Delete "${name}"?`)
 
@@ -53,8 +55,9 @@
     event.preventDefault()
     const title = (subtaskDrafts[parentId] ?? '').trim()
     if (!title || !selected) return
-    await addTask(selected.id, title, { parentId })
+    await addTask(selected.id, title, { parentId, due: subtaskDueDrafts[parentId] || null })
     subtaskDrafts[parentId] = ''
+    subtaskDueDrafts[parentId] = ''
   }
 
   async function submitList(event: SubmitEvent) {
@@ -134,7 +137,10 @@
                   <li class="row-line" class:done={subtask.done}>
                     <label class="check grow">
                       <input type="checkbox" checked={subtask.done} onchange={() => setTaskDone(subtask.id, !subtask.done, today)} />
-                      <span class="label">{subtask.title}</span>
+                      <span class="text">
+                        <span class="label">{subtask.title}</span>
+                        {#if subtask.due && !subtask.done}<span class="detail" class:late={subtask.due < today}>{dueLabel(subtask, today)}</span>{/if}
+                      </span>
                     </label>
                     <button type="button" class="remove" aria-label="Delete {subtask.title}" onclick={() => confirmDelete(subtask.title) && deleteTask(subtask.id)}
                       >×</button
@@ -185,6 +191,22 @@
                     onchange={(event) => updateTask(task.id, { link: event.currentTarget.value.trim() })}
                   />
                 </label>
+                {#if task.subtasks.length}
+                  <div class="subtask-dues">
+                    <span class="small muted">Subtask deadlines</span>
+                    {#each task.subtasks as subtask (subtask.id)}
+                      <label class="subtask-due">
+                        <span>{subtask.title}</span>
+                        <input
+                          type="date"
+                          value={subtask.due ?? ''}
+                          aria-label="Deadline for {subtask.title}"
+                          onchange={(event) => updateTask(subtask.id, { due: event.currentTarget.value || null })}
+                        />
+                      </label>
+                    {/each}
+                  </div>
+                {/if}
                 <form class="add-row" onsubmit={(event) => submitSubtask(event, task.id)}>
                   <input
                     class="grow"
@@ -193,6 +215,12 @@
                     oninput={(event) => (subtaskDrafts[task.id] = event.currentTarget.value)}
                     placeholder="Add a subtask"
                     aria-label="New subtask for {task.title}"
+                  />
+                  <input
+                    type="date"
+                    value={subtaskDueDrafts[task.id] ?? ''}
+                    oninput={(event) => (subtaskDueDrafts[task.id] = event.currentTarget.value)}
+                    aria-label="Deadline for the new subtask (optional)"
                   />
                   <button type="submit" class="button small">Add</button>
                 </form>

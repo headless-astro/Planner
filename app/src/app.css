@@ -2886,3 +2886,62 @@ a.track-link {
 .add-activity select {
   width: 100%;
 }
+
+/* Shortcuts next to the date on Today (F82). */
+.day-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.shortcuts .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.shortcuts .shortcut-edit {
+  color: var(--muted);
+}
+
+.shortcut-panel {
+  margin-top: 12px;
+}
+
+.shortcut-panel .add-row select {
+  min-width: 0;
+}
+
+.subtasks .detail {
+  margin-left: 6px;
+}
+
+.subtask-dues {
+  display: grid;
+  gap: 6px;
+}
+
+.subtask-due {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subtask-due span {
+  flex: 1;
+  min-width: 0;
+}

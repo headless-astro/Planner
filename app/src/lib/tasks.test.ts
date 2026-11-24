@@ -74,6 +74,22 @@ describe('task lists', () => {
     expect(await getDueTasks('2026-11-02', true)).toEqual([])
   })
 
+  it('gives subtasks their own deadline: they show on Today with their task, and move it up the list (F83)', async () => {
+    await addTask('list-work', 'Due next week', { due: '2026-11-09' })
+    await addTask('list-work', 'Launch')
+    const launch = (await getListTasks('list-work')).open.find((task) => task.title === 'Launch')!
+    await addTask('list-work', 'Write the notes', { parentId: launch.id, due: '2026-11-02' })
+    await addTask('list-work', 'No date yet', { parentId: launch.id })
+
+    expect(titles((await getListTasks('list-work')).open)).toEqual(['Launch', 'Due next week'])
+    const due = await getDueTasks('2026-11-02', true)
+    expect(due.map((item) => [item.task.title, item.listName, item.parentTitle])).toEqual([['Write the notes', 'Work', 'Launch']])
+
+    // Once the task is done, its subtasks leave Today (the task shows as done that day).
+    await setTaskDone(launch.id, true, '2026-11-02')
+    expect((await getDueTasks('2026-11-02', true)).map((item) => item.task.title)).toEqual(['Launch'])
+  })
+
   it('deletes a task with its subtasks, and a list with its tasks', async () => {
     await addTask('list-life', 'Trip')
     const [trip] = (await getListTasks('list-life')).open

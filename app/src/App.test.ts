@@ -406,6 +406,46 @@ describe('Lists', () => {
   })
 })
 
+describe('Shortcuts on Today (F82)', () => {
+  it('adds a shortcut to the Work list next to the date, which opens that list', async () => {
+    await open('#/today')
+    click(document.querySelector('button[aria-label="Add a shortcut"]'))
+    const select = document.querySelector('select[aria-label="Shortcut to add"]')
+    if (!(select instanceof HTMLSelectElement)) throw new Error('select not found')
+    await vi.waitFor(() => expect(select.querySelector('option[value="#/lists/list-work"]')).toBeTruthy())
+    select.value = '#/lists/list-work'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    click(buttonByText('Add'))
+    await vi.waitFor(() => expect(document.querySelector('.shortcuts a[href="#/lists/list-work"]')?.textContent).toBe('Work'))
+
+    go('#/lists/list-work')
+    await vi.waitFor(() => expect(heading()).toBe('Lists'))
+    await vi.waitFor(() => expect(document.querySelector('.list-tabs [aria-pressed="true"]')?.textContent).toBe('Work'))
+  })
+})
+
+describe('Subtask deadlines (F83)', () => {
+  it('adds a subtask with a deadline, which shows on Today with its task', async () => {
+    await open('#/lists/list-work')
+    const input = document.querySelector('input[aria-label="New task"]')
+    await vi.waitFor(() => expect(document.querySelector('.list-tabs [aria-pressed="true"]')?.textContent).toBe('Work'))
+    type(input, 'Launch')
+    submit(input)
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="New subtask for Launch"]')).toBeTruthy())
+    const subtask = document.querySelector('input[aria-label="New subtask for Launch"]')
+    type(subtask, 'Write the notes')
+    type(document.querySelector('input[aria-label="Deadline for the new subtask (optional)"]'), '2026-11-02')
+    submit(subtask)
+    await vi.waitFor(() => expect(document.querySelector('.subtasks')?.textContent).toContain('due today'))
+    expect(document.querySelector('input[aria-label="Deadline for Write the notes"]')).toBeTruthy()
+
+    go('#/today')
+    await showPart('Any time')
+    await vi.waitFor(() => expect(text()).toContain('Work · Launch · due today'))
+  })
+})
+
 describe('Shopping', () => {
   it('puts a staple on To buy when it runs low, and ticks it off', async () => {
     await open('#/shopping')
