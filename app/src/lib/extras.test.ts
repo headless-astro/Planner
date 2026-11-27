@@ -43,6 +43,16 @@ describe('added to one day only (F79)', () => {
     expect(countsAsChoices('2026-11-08', { week, tracks: [], exercise: false, onDay: new Set() }).map((choice) => choice.value)).toEqual(['act:guitar'])
   })
 
+  it('offers a weigh-in on a day without one, when weigh-ins are on', () => {
+    const week = WEEK_TEMPLATE.map((day) => ({ ...day, activities: [] }))
+    const values = (body: boolean, onDay: string[] = []) =>
+      countsAsChoices('2026-11-04', { week, tracks: [], exercise: false, body, onDay: new Set(onDay) }).map((choice) => choice.value)
+    expect(values(true)).toEqual(['weigh-in'])
+    expect(values(true, ['weigh-in'])).toEqual([])
+    expect(values(false)).toEqual([])
+    expect(extrasOf([{ id: 'w', part: 'morning', counts: 'weigh-in' }])).toEqual([{ id: 'w', part: 'morning', counts: 'weigh-in' }])
+  })
+
   it('leaves out anything malformed', () => {
     expect(extrasOf([{ id: 'a', part: 'morning', counts: 'workout' }, { id: 1 }, 'x', null, { id: 'b', counts: 'nope' }])).toEqual([{ id: 'a', part: 'morning', counts: 'workout' }])
     expect(extrasOf('nope')).toEqual([])

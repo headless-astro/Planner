@@ -100,7 +100,7 @@
       {/if}
     </div>
   {:else}
-    <p class="muted small">The chart starts after two weigh-ins. They go in on Saturdays, on the Today screen.</p>
+    <p class="muted small">The chart starts after two weigh-ins. They go in on Today, on Saturdays or any day you add one.</p>
   {/if}
 
   {#if layout}

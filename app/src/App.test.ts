@@ -679,6 +679,34 @@ describe('Adding to a day (F79, F80)', () => {
     await vi.waitFor(() => expect([...document.querySelectorAll('.week li')].find((row) => row.textContent?.startsWith('Fitness'))?.textContent).toContain('1/'))
   })
 
+  it('a weigh-in can go on any day, with weight and waist', async () => {
+    // 4 Nov 2026 is a Wednesday; the starting week weighs in on Saturday.
+    await open('#/day/2026-11-04')
+    await vi.waitFor(() => expect(heading()).toBe('Wednesday'))
+    await vi.waitFor(() => expect(document.querySelector('.counts-as select option[value="weigh-in"]')).toBeTruthy())
+    expect(document.querySelector('.measure')).toBeNull()
+    const select = document.querySelector('.counts-as select') as HTMLSelectElement
+    select.value = 'weigh-in'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    submit(document.querySelector('input[aria-label="A note on it"]'))
+    await vi.waitFor(() => expect(document.querySelectorAll('.measure input')).toHaveLength(2))
+    expect(document.querySelector('.counts-as select option[value="weigh-in"]')).toBeNull()
+    const [weight, waist] = document.querySelectorAll<HTMLInputElement>('.measure input')
+    for (const [input, value] of [[weight, '79.4'], [waist, '92']] as const) {
+      input.value = value
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    await vi.waitFor(async () =>
+      expect((await db.measurements.toArray()).map((row) => [row.date, row.kind, row.value]).sort()).toEqual([
+        ['2026-11-04', 'waist', 92],
+        ['2026-11-04', 'weight', 79.4],
+      ]),
+    )
+    // Once something's typed in, it can't be taken off the day.
+    await vi.waitFor(() => expect(buttonByText('Take off this day')).toBeUndefined())
+  })
+
   it('an extra can be taken off the day while it is not ticked', async () => {
     await setEntry('2026-11-08', 'extras', [{ id: 'w', part: 'anytime', counts: 'workout' }])
     await open('#/day/2026-11-08')

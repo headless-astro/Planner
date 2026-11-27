@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DRAWING_TRACK, SPANISH_TRACK, TECH_TRACK } from './activities'
 import { formatDate, plannerDate, weekdayIndex } from './dates'
 import type { Topic, Track } from './db'
+import { ALL_FEATURES } from './features'
 import { buildDay, weekDates, type PlanItem } from './plan'
 
 const at = (year: number, month: number, day: number, hour = 12, minute = 0) => new Date(year, month - 1, day, hour, minute)
@@ -132,6 +133,26 @@ describe('added to one day only (F79)', () => {
     expect(find(plan.evening, 'workout')).toMatchObject({ label: 'Workout · swimming', tickKey: 'workout', extraId: 'w' })
     expect(find(plan.evening, 'workout')?.detail).toContain('counts for Fitness')
     expect(find(plan.morning, 'workout')).toBeUndefined()
+  })
+
+  it('a weigh-in on a day that isn’t the weigh-in day, in the part you picked', () => {
+    // 4 Nov 2026 is a Wednesday; the starting week weighs in on Saturday.
+    const plan = buildDay(at(2026, 11, 4), { ...setup, extras: [{ id: 'b', part: 'evening', counts: 'weigh-in' }] })
+    expect(find(plan.evening, 'weigh-in')).toMatchObject({ label: 'Weigh-in', extraId: 'b' })
+    expect(find(plan.morning, 'weigh-in')).toBeUndefined()
+    // Saturday already has one.
+    const saturday = buildDay(at(2026, 11, 7), { ...setup, extras: [{ id: 'b', part: 'evening', counts: 'weigh-in' }] })
+    expect(find(saturday.evening, 'weigh-in')).toBeUndefined()
+    expect(find(saturday.morning, 'weigh-in')?.extraId).toBeUndefined()
+    // Off in Settings, it isn't shown.
+    const off = buildDay(at(2026, 11, 4), { ...setup, features: { ...ALL_FEATURES, body: false }, extras: [{ id: 'b', part: 'evening', counts: 'weigh-in' }] })
+    expect(find(off.evening, 'weigh-in')).toBeUndefined()
+  })
+
+  it('keeps a weight or waist already on a day in view', () => {
+    expect(find(buildDay(at(2026, 11, 4), setup).morning, 'weigh-in')).toBeUndefined()
+    expect(find(buildDay(at(2026, 11, 4), { ...setup, measured: true }).morning, 'weigh-in')).toBeDefined()
+    expect(buildDay(at(2026, 11, 7), { ...setup, measured: true }).morning.filter((item) => item.id === 'weigh-in')).toHaveLength(1)
   })
 
   it("isn't a second workout on a day that has one", () => {

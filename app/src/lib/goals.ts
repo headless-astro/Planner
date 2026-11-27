@@ -128,7 +128,7 @@ const kg = (value: number) => `${value.toFixed(1)} kg`
 const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 function weightText(weights: readonly { date: string; value: number }[], pace: number | null): string {
-  if (!weights.length) return 'No weigh-ins yet. They go in on Saturdays, on Today.'
+  if (!weights.length) return 'No weigh-ins yet. They go in on Today, on Saturdays or any day you add one.'
   const first = weights[0]
   const last = weights[weights.length - 1]
   const since = formatShort(parseDate(first.date))

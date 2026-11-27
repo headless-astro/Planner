@@ -69,6 +69,8 @@
   const allSessions = live(() => listSessions, [] as TrackSession[])
   const steps = live(() => listAllSteps, [] as Topic[])
   const body = live(() => () => getDayMeasurements(date), {} as DayMeasurements)
+  /** The day has a weight or a waist typed in. */
+  const measured = () => [body.current.weight, body.current.waist].some((value) => value !== undefined && value !== null)
   // Shortcuts next to the date (F82), and what they can open.
   const shortcuts = live(() => getShortcuts, [] as Shortcut[])
   const taskLists = live(() => listLists, [] as TaskList[])
@@ -115,6 +117,7 @@
       exercise: exercise.current,
       features: features.current,
       extras: extrasOf(values.current.extras),
+      measured: measured(),
     }),
   )
   const crunchDay = $derived(isCrunchDay(crunches.current, date))
@@ -250,7 +253,7 @@
       [...plan.morning, ...plan.anytime, ...plan.evening].map((item) => (item.id === 'workout' ? 'workout' : item.trackId ? `track:${item.trackId}` : (item.tickKey ?? item.id))),
     ),
   )
-  const choices = $derived(week.current ? countsAsChoices(date, { week: week.current, tracks: tracks.current, exercise: on.exercise, onDay }) : [])
+  const choices = $derived(week.current ? countsAsChoices(date, { week: week.current, tracks: tracks.current, exercise: on.exercise, body: on.body, onDay }) : [])
   const chosen = $derived(choices.find((choice) => choice.value === countsAs))
 
   async function submitTodo(event: SubmitEvent) {
@@ -403,6 +406,7 @@
         cm
       </label>
     </div>
+    {@render removeExtraButton(item, measured())}
   </li>
 {/snippet}
 
@@ -675,7 +679,9 @@
         </label>
       {/if}
     </div>
-    {#if chosen}
+    {#if chosen?.extra.counts === 'weigh-in'}
+      <p class="muted small">Added to this day only. Type your weight, your waist or both, and they go in Insights and the chart like any weigh-in.</p>
+    {:else if chosen}
       <p class="muted small">Added to this day only. Tick it when it's done and it counts in This week and Insights, like the planned one.</p>
     {/if}
   </form>

@@ -71,7 +71,7 @@ describe('goals', () => {
 
   it('say when there is nothing yet', async () => {
     const progress = await getGoalProgress('2026-11-02')
-    expect(progress.weight?.text).toBe('No weigh-ins yet. They go in on Saturdays, on Today.')
+    expect(progress.weight?.text).toBe('No weigh-ins yet. They go in on Today, on Saturdays or any day you add one.')
     expect(progress.fitness).toMatchObject({ value: '0 workouts', amount: 0 })
     expect(progress.weight?.amount).toBeNull()
   })

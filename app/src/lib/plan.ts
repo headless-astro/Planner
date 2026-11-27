@@ -34,6 +34,8 @@ export interface DaySetup {
   features?: Features
   /** What was added to this day only (F79). */
   extras?: readonly DayExtra[]
+  /** The day already has a weight or waist, so its weigh-in shows even when it isn't the weigh-in day. */
+  measured?: boolean
 }
 
 export interface PlanItem {
@@ -137,7 +139,8 @@ export function buildDay(date: Date, setup: DaySetup = {}): DayPlan {
   const template = dayWithFeatures((setup.week ?? WEEK_TEMPLATE)[weekday] ?? WEEK_TEMPLATE[weekday], features)
   const parts: Record<TimeOfDay, PlanItem[]> = { morning: [], anytime: [], evening: [] }
 
-  if (template.weighIn) parts.morning.push({ id: 'weigh-in', label: 'Weigh-in', detail: 'after waking, before eating' })
+  const WEIGH_IN = { id: 'weigh-in', label: 'Weigh-in', detail: 'after waking, before eating' }
+  if (template.weighIn) parts.morning.push(WEIGH_IN)
 
   for (const dose of doses) parts[dose.time].push({ id: dose.id, label: dose.label })
 
@@ -155,6 +158,13 @@ export function buildDay(date: Date, setup: DaySetup = {}): DayPlan {
   const ALSO = 'added for this day'
   for (const extra of setup.extras ?? []) {
     const part = parts[extra.part] ? extra.part : 'anytime'
+    if (extra.counts === 'weigh-in') {
+      // One weigh-in a day: the planned one holds the day's weight and waist.
+      if (!features.body || [...parts.morning, ...parts.anytime, ...parts.evening].some((item) => item.id === 'weigh-in')) continue
+      const note = extra.note?.trim()
+      parts[part].push({ id: 'weigh-in', label: note ? `Weigh-in · ${note}` : 'Weigh-in', detail: ALSO, extraId: extra.id })
+      continue
+    }
     if (extra.counts === 'workout') {
       // A planned workout already holds the day's workout tick.
       if (!features.exercise || session || [...parts.morning, ...parts.anytime, ...parts.evening].some((item) => item.id === 'workout')) continue
@@ -171,6 +181,11 @@ export function buildDay(date: Date, setup: DaySetup = {}): DayPlan {
     }
     const item = activityItem(activity, date, setup)
     if (item) parts[part].push({ ...item, detail: [item.detail, ALSO].filter(Boolean).join(' · '), extraId: extra.id })
+  }
+
+  // A weight or waist already on this day stays in view, even if the weigh-in day has moved.
+  if (features.body && setup.measured && ![...parts.morning, ...parts.anytime, ...parts.evening].some((item) => item.id === 'weigh-in')) {
+    parts.morning.unshift(WEIGH_IN)
   }
 
   return {
